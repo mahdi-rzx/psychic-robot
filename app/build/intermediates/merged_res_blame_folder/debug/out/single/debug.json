@@ -1,0 +1,10 @@
+[
+    {
+        "merged": "me.lunarveil.app-merged_res-59:/mipmap-anydpi-v26_ic_launcher_round.xml.flat",
+        "source": "me.lunarveil.app-main-61:/mipmap-anydpi-v26/ic_launcher_round.xml"
+    },
+    {
+        "merged": "me.lunarveil.app-merged_res-59:/mipmap-anydpi-v26_ic_launcher.xml.flat",
+        "source": "me.lunarveil.app-main-61:/mipmap-anydpi-v26/ic_launcher.xml"
+    }
+]
