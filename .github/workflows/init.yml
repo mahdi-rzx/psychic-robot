@@ -29,7 +29,6 @@ jobs:
 
       - name: Generate Android project scaffold
         run: |
-          # Create directory structure
           mkdir -p app/src/main/java/me/lunarveil
           mkdir -p app/src/main/res/values
           mkdir -p app/src/main/res/mipmap-anydpi-v26
@@ -81,7 +80,7 @@ jobs:
           zipStorePath=wrapper/dists
           EOF
 
-          # App-level build.gradle.kts (with kapt plugin)
+          # App-level build.gradle.kts
           cat > app/build.gradle.kts << 'EOF'
           plugins {
               id("com.android.application")
@@ -232,7 +231,7 @@ jobs:
           }
           EOF
 
-          # Theme.kt (Compose)
+          # Theme.kt
           mkdir -p app/src/main/java/me/lunarveil/ui/theme
           cat > app/src/main/java/me/lunarveil/ui/theme/Theme.kt << 'EOF'
           package me.lunarveil.ui.theme
@@ -278,8 +277,16 @@ jobs:
           }
           EOF
 
-          # Adaptive icon XML (no PNGs required)
+          # Icons (adaptive)
           cat > app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml << 'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+              <background android:drawable="@color/ic_launcher_background"/>
+              <foreground android:drawable="@color/ic_launcher_foreground"/>
+          </adaptive-icon>
+          EOF
+
+          cat > app/src/main/res/mipmap-anydpi-v26/ic_launcher_round.xml << 'EOF'
           <?xml version="1.0" encoding="utf-8"?>
           <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
               <background android:drawable="@color/ic_launcher_background"/>
@@ -294,7 +301,7 @@ jobs:
           </resources>
           EOF
 
-          # proguard-rules.pro (empty)
+          # proguard-rules.pro
           touch app/proguard-rules.pro
 
       - name: Setup Gradle
