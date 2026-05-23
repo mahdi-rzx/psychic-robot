@@ -1,0 +1,344 @@
+name: Scaffold & Build LunarVeil
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_name:
+        description: 'Version name (e.g. 1.0.0)'
+        required: true
+      chunk_size_mb:
+        description: 'Chunk size in MB for APK splitting'
+        default: '5'
+        required: false
+
+env:
+  VERSION: ${{ github.event.inputs.version_name }}
+  CHUNK_SIZE_MB: ${{ github.event.inputs.chunk_size_mb || '5' }}
+  PACKAGE: me.lunarveil
+  APP_NAME: LunarVeil
+
+permissions:
+  contents: write
+
+jobs:
+  generate-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Generate Android project scaffold
+        run: |
+          # Create project structure
+          mkdir -p app/src/main/java/me/lunarveil
+          mkdir -p app/src/main/res/values
+          mkdir -p app/src/main/res/mipmap-hdpi
+          mkdir -p app/src/main/res/mipmap-mdpi
+          mkdir -p app/src/main/res/mipmap-xhdpi
+          mkdir -p app/src/main/res/mipmap-xxhdpi
+          mkdir -p app/src/main/res/mipmap-xxxhdpi
+          mkdir -p gradle/wrapper
+
+          # settings.gradle.kts
+          cat > settings.gradle.kts << 'EOF'
+          pluginManagement {
+              repositories {
+                  google()
+                  mavenCentral()
+                  gradlePluginPortal()
+              }
+          }
+          dependencyResolutionManagement {
+              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+              repositories {
+                  google()
+                  mavenCentral()
+              }
+          }
+          rootProject.name = "LunarVeil"
+          include(":app")
+          EOF
+
+          # Project-level build.gradle.kts
+          cat > build.gradle.kts << 'EOF'
+          plugins {
+              id("com.android.application") version "8.2.2" apply false
+              id("org.jetbrains.kotlin.android") version "1.9.22" apply false
+          }
+          EOF
+
+          # gradle.properties
+          cat > gradle.properties << 'EOF'
+          android.useAndroidX=true
+          kotlin.code.style=official
+          android.nonTransitiveRClass=true
+          org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+          EOF
+
+          # gradle-wrapper.properties
+          cat > gradle/wrapper/gradle-wrapper.properties << 'EOF'
+          distributionBase=GRADLE_USER_HOME
+          distributionPath=wrapper/dists
+          distributionUrl=https\://services.gradle.org/distributions/gradle-8.5-bin.zip
+          zipStoreBase=GRADLE_USER_HOME
+          zipStorePath=wrapper/dists
+          EOF
+
+          # App-level build.gradle.kts
+          cat > app/build.gradle.kts << 'EOF'
+          plugins {
+              id("com.android.application")
+              id("org.jetbrains.kotlin.android")
+          }
+
+          android {
+              namespace = "me.lunarveil"
+              compileSdk = 34
+
+              defaultConfig {
+                  applicationId = "me.lunarveil"
+                  minSdk = 26
+                  targetSdk = 34
+                  versionCode = 1
+                  versionName = System.getenv("VERSION") ?: "1.0.0"
+                  testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+                  vectorDrawables { useSupportLibrary = true }
+              }
+
+              buildTypes {
+                  debug {
+                      isDebuggable = true
+                  }
+                  release {
+                      isMinifyEnabled = false
+                      proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+                  }
+              }
+              compileOptions {
+                  sourceCompatibility = JavaVersion.VERSION_17
+                  targetCompatibility = JavaVersion.VERSION_17
+              }
+              kotlinOptions {
+                  jvmTarget = "17"
+              }
+              buildFeatures {
+                  compose = true
+              }
+              composeOptions {
+                  kotlinCompilerExtensionVersion = "1.5.8"
+              }
+              packaging {
+                  resources { excludes += "/META-INF/{AL2.0,LGPL2.1}" }
+              }
+          }
+
+          dependencies {
+              implementation("androidx.core:core-ktx:1.12.0")
+              implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
+              implementation("androidx.activity:activity-compose:1.8.2")
+              implementation(platform("androidx.compose:compose-bom:2024.02.00"))
+              implementation("androidx.compose.ui:ui")
+              implementation("androidx.compose.ui:ui-graphics")
+              implementation("androidx.compose.ui:ui-tooling-preview")
+              implementation("androidx.compose.material3:material3")
+              implementation("androidx.compose.material:material-icons-extended")
+              implementation("androidx.navigation:navigation-compose:2.7.7")
+              implementation("androidx.room:room-runtime:2.6.1")
+              implementation("androidx.room:room-ktx:2.6.1")
+              kapt("androidx.room:room-compiler:2.6.1")
+              implementation("com.squareup.retrofit2:retrofit:2.9.0")
+              implementation("com.squareup.retrofit2:converter-gson:2.9.0")
+              implementation("com.squareup.okhttp3:okhttp:4.12.0")
+              implementation("com.squareup.okhttp3:logging-interceptor:4.12.0")
+              implementation("androidx.datastore:datastore-preferences:1.0.0")
+              implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+              implementation("io.coil-kt:coil-compose:2.5.0")
+              testImplementation("junit:junit:4.13.2")
+              androidTestImplementation("androidx.test.ext:junit:1.1.5")
+              androidTestImplementation("androidx.test.espresso:espresso-core:3.5.1")
+              androidTestImplementation(platform("androidx.compose:compose-bom:2024.02.00"))
+              androidTestImplementation("androidx.compose.ui:ui-test-junit4")
+              debugImplementation("androidx.compose.ui:ui-tooling")
+              debugImplementation("androidx.compose.ui:ui-test-manifest")
+          }
+          EOF
+
+          # AndroidManifest.xml
+          cat > app/src/main/AndroidManifest.xml << 'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android"
+              xmlns:tools="http://schemas.android.com/tools">
+
+              <uses-permission android:name="android.permission.INTERNET" />
+
+              <application
+                  android:allowBackup="true"
+                  android:icon="@mipmap/ic_launcher"
+                  android:label="LunarVeil"
+                  android:roundIcon="@mipmap/ic_launcher_round"
+                  android:supportsRtl="true"
+                  android:theme="@style/Theme.LunarVeil"
+                  tools:targetApi="34">
+                  <activity
+                      android:name=".MainActivity"
+                      android:exported="true"
+                      android:theme="@style/Theme.LunarVeil">
+                      <intent-filter>
+                          <action android:name="android.intent.action.MAIN" />
+                          <category android:name="android.intent.category.LAUNCHER" />
+                      </intent-filter>
+                  </activity>
+              </application>
+          </manifest>
+          EOF
+
+          # themes.xml
+          cat > app/src/main/res/values/themes.xml << 'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <resources>
+              <style name="Theme.LunarVeil" parent="android:Theme.Material.Light.NoActionBar" />
+          </resources>
+          EOF
+
+          # MainActivity.kt
+          cat > app/src/main/java/me/lunarveil/MainActivity.kt << 'EOF'
+          package me.lunarveil
+
+          import android.os.Bundle
+          import androidx.activity.ComponentActivity
+          import androidx.activity.compose.setContent
+          import androidx.compose.foundation.layout.*
+          import androidx.compose.material3.*
+          import androidx.compose.runtime.*
+          import androidx.compose.ui.Alignment
+          import androidx.compose.ui.Modifier
+          import androidx.compose.ui.unit.dp
+          import me.lunarveil.ui.theme.LunarVeilTheme
+
+          class MainActivity : ComponentActivity() {
+              override fun onCreate(savedInstanceState: Bundle?) {
+                  super.onCreate(savedInstanceState)
+                  setContent {
+                      LunarVeilTheme {
+                          Surface(
+                              modifier = Modifier.fillMaxSize(),
+                              color = MaterialTheme.colorScheme.background
+                          ) {
+                              Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxSize()) {
+                                  Text("LunarVeil", style = MaterialTheme.typography.headlineLarge)
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+          EOF
+
+          # Create a minimal theme file (compose)
+          mkdir -p app/src/main/java/me/lunarveil/ui/theme
+          cat > app/src/main/java/me/lunarveil/ui/theme/Theme.kt << 'EOF'
+          package me.lunarveil.ui.theme
+
+          import android.os.Build
+          import androidx.compose.foundation.isSystemInDarkTheme
+          import androidx.compose.material3.*
+          import androidx.compose.runtime.Composable
+          import androidx.compose.ui.graphics.Color
+          import androidx.compose.ui.platform.LocalContext
+
+          private val LightColorScheme = lightColorScheme(
+              primary = Color(0xFF6750A4),
+              secondary = Color(0xFF625B71),
+              tertiary = Color(0xFF7D5260)
+          )
+
+          private val DarkColorScheme = darkColorScheme(
+              primary = Color(0xFFD0BCFF),
+              secondary = Color(0xFFCCC2DC),
+              tertiary = Color(0xFFEFB8C8)
+          )
+
+          @Composable
+          fun LunarVeilTheme(
+              darkTheme: Boolean = isSystemInDarkTheme(),
+              dynamicColor: Boolean = true,
+              content: @Composable () -> Unit
+          ) {
+              val colorScheme = when {
+                  dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
+                      val context = LocalContext.current
+                      if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+                  }
+                  darkTheme -> DarkColorScheme
+                  else -> LightColorScheme
+              }
+              MaterialTheme(
+                  colorScheme = colorScheme,
+                  typography = Typography(),
+                  content = content
+              )
+          }
+          EOF
+
+          # Placeholder launcher icons (a simple adaptive icon XML, no actual images)
+          mkdir -p app/src/main/res/mipmap-anydpi-v26
+          cat > app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml << 'EOF'
+          <?xml version="1.0" encoding="utf-8"?>
+          <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+              <background android:drawable="@color/ic_launcher_background"/>
+              <foreground android:drawable="@color/ic_launcher_foreground"/>
+          </adaptive-icon>
+          EOF
+          # We need the colors, use simple drawable colors
+          cat > app/src/main/res/values/ic_launcher_colors.xml << 'EOF'
+          <resources>
+              <color name="ic_launcher_background">#6750A4</color>
+              <color name="ic_launcher_foreground">#FFFFFF</color>
+          </resources>
+          EOF
+
+          # Required proguard-rules.pro
+          touch app/proguard-rules.pro
+
+      - name: Generate Gradle wrapper
+        uses: gradle/actions/setup-gradle@v3
+        with:
+          gradle-version: 8.5
+      - run: gradle wrapper --gradle-version 8.5
+        working-directory: ./
+
+      - name: Build debug APK
+        run: ./gradlew assembleDebug
+
+      - name: Split and base64-encode APK
+        id: split
+        run: |
+          APK_PATH=$(find app/build/outputs/apk/debug -name '*.apk' | head -n 1)
+          if [ -z "$APK_PATH" ]; then
+            echo "APK not found!" && exit 1
+          fi
+          mkdir -p release_chunks
+          CHUNK_SIZE=$(( CHUNK_SIZE_MB * 1024 * 1024 ))
+          split -b $CHUNK_SIZE -d "$APK_PATH" release_chunks/chunk_
+          cd release_chunks
+          for f in chunk_*; do
+            base64 -w0 "$f" > "$f.b64"
+            rm "$f"
+          done
+          cd ..
+          TOTAL_SIZE=$(stat -c%s "$APK_PATH")
+          NUM_CHUNKS=$(ls release_chunks/chunk_*.b64 | wc -l)
+          echo "{\"version\":\"$VERSION\",\"size\":$TOTAL_SIZE,\"chunks\":$NUM_CHUNKS,\"chunk_size_mb\":$CHUNK_SIZE_MB}" > release_chunks/meta.json
+
+      - name: Copy chunks to builds directory
+        run: |
+          mkdir -p builds/$VERSION
+          cp -r release_chunks/* builds/$VERSION/
+
+      - name: Commit project & APK chunks
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add -A
+          git commit -m "🌙 LunarVeil v$VERSION - project scaffold & APK" || echo "Nothing to commit"
+          git push
