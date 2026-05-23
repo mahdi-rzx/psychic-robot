@@ -29,14 +29,10 @@ jobs:
 
       - name: Generate Android project scaffold
         run: |
-          # Create project structure
+          # Create directory structure
           mkdir -p app/src/main/java/me/lunarveil
           mkdir -p app/src/main/res/values
-          mkdir -p app/src/main/res/mipmap-hdpi
-          mkdir -p app/src/main/res/mipmap-mdpi
-          mkdir -p app/src/main/res/mipmap-xhdpi
-          mkdir -p app/src/main/res/mipmap-xxhdpi
-          mkdir -p app/src/main/res/mipmap-xxxhdpi
+          mkdir -p app/src/main/res/mipmap-anydpi-v26
           mkdir -p gradle/wrapper
 
           # settings.gradle.kts
@@ -64,6 +60,7 @@ jobs:
           plugins {
               id("com.android.application") version "8.2.2" apply false
               id("org.jetbrains.kotlin.android") version "1.9.22" apply false
+              id("org.jetbrains.kotlin.kapt") version "1.9.22" apply false
           }
           EOF
 
@@ -84,11 +81,12 @@ jobs:
           zipStorePath=wrapper/dists
           EOF
 
-          # App-level build.gradle.kts
+          # App-level build.gradle.kts (with kapt plugin)
           cat > app/build.gradle.kts << 'EOF'
           plugins {
               id("com.android.application")
               id("org.jetbrains.kotlin.android")
+              id("org.jetbrains.kotlin.kapt")
           }
 
           android {
@@ -234,7 +232,7 @@ jobs:
           }
           EOF
 
-          # Create a minimal theme file (compose)
+          # Theme.kt (Compose)
           mkdir -p app/src/main/java/me/lunarveil/ui/theme
           cat > app/src/main/java/me/lunarveil/ui/theme/Theme.kt << 'EOF'
           package me.lunarveil.ui.theme
@@ -280,8 +278,7 @@ jobs:
           }
           EOF
 
-          # Placeholder launcher icons (a simple adaptive icon XML, no actual images)
-          mkdir -p app/src/main/res/mipmap-anydpi-v26
+          # Adaptive icon XML (no PNGs required)
           cat > app/src/main/res/mipmap-anydpi-v26/ic_launcher.xml << 'EOF'
           <?xml version="1.0" encoding="utf-8"?>
           <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
@@ -289,7 +286,7 @@ jobs:
               <foreground android:drawable="@color/ic_launcher_foreground"/>
           </adaptive-icon>
           EOF
-          # We need the colors, use simple drawable colors
+
           cat > app/src/main/res/values/ic_launcher_colors.xml << 'EOF'
           <resources>
               <color name="ic_launcher_background">#6750A4</color>
@@ -297,15 +294,14 @@ jobs:
           </resources>
           EOF
 
-          # Required proguard-rules.pro
+          # proguard-rules.pro (empty)
           touch app/proguard-rules.pro
 
-      - name: Generate Gradle wrapper
+      - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v3
-        with:
-          gradle-version: 8.5
-      - run: gradle wrapper --gradle-version 8.5
-        working-directory: ./
+
+      - name: Generate Gradle wrapper
+        run: gradle wrapper --gradle-version 8.5
 
       - name: Build debug APK
         run: ./gradlew assembleDebug
@@ -340,5 +336,5 @@ jobs:
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           git add -A
-          git commit -m "🌙 LunarVeil v$VERSION - project scaffold & APK" || echo "Nothing to commit"
+          git commit -m "🌙 LunarVeil v$VERSION – scaffold + APK" || echo "Nothing to commit"
           git push
