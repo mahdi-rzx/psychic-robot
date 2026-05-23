@@ -10,6 +10,11 @@ on:
         description: 'Chunk size (MB)'
         default: '5'
         required: false
+      clean_old_builds:
+        description: 'Delete all previous APK builds before this one'
+        type: boolean
+        default: false
+        required: false
 
 env:
   VERSION: ${{ github.event.inputs.version_name }}
@@ -23,6 +28,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Clean old builds (if enabled)
+        if: ${{ github.event.inputs.clean_old_builds == 'true' }}
+        run: |
+          rm -rf builds
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add builds
+          git diff --cached --quiet || git commit -m "🧹 Clean old builds" && git push
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -40,20 +54,14 @@ jobs:
       - name: Build debug APK
         run: ./gradlew assembleDebug
 
-      - name: Split APK into chunks (chunk_001, chunk_002, …)
+      - name: Split APK into raw binary chunks (chunk.001, chunk.002, …)
         run: |
           APK_PATH=$(find app/build/outputs/apk/debug -name '*.apk' | head -n 1)
           mkdir -p release_chunks
           CHUNK_SIZE=$(( CHUNK_SIZE_MB * 1024 * 1024 ))
-          split -b $CHUNK_SIZE -d -a 3 "$APK_PATH" release_chunks/chunk_
-          cd release_chunks
-          for f in chunk_*; do
-            base64 -w0 "$f" > "$f.b64"
-            rm "$f"
-          done
-          cd ..
+          split -b $CHUNK_SIZE -d --numeric-suffixes=1 -a 3 "$APK_PATH" release_chunks/chunk.
           TOTAL_SIZE=$(stat -c%s "$APK_PATH")
-          NUM_CHUNKS=$(ls release_chunks/chunk_*.b64 | wc -l)
+          NUM_CHUNKS=$(ls release_chunks/chunk.* | wc -l)
           echo "{\"version\":\"$VERSION\",\"size\":$TOTAL_SIZE,\"chunks\":$NUM_CHUNKS,\"chunk_size_mb\":$CHUNK_SIZE_MB}" > release_chunks/meta.json
 
       - name: Store chunks in builds/<version>
