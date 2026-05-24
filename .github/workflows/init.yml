@@ -99,9 +99,7 @@ jobs:
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
               <uses-permission android:name="android.permission.INTERNET" />
-              <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
-              <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
-              <application android:allowBackup="true" android:icon="@mipmap/ic_launcher" android:label="LunarVeil" android:roundIcon="@mipmap/ic_launcher_round" android:supportsRtl="true" android:theme="@style/Theme.LunarVeil" android:requestLegacyExternalStorage="true">
+              <application android:allowBackup="true" android:icon="@mipmap/ic_launcher" android:label="LunarVeil" android:roundIcon="@mipmap/ic_launcher_round" android:supportsRtl="true" android:theme="@style/Theme.LunarVeil">
                   <activity android:name=".MainActivity" android:exported="true" android:theme="@style/Theme.LunarVeil">
                       <intent-filter><action android:name="android.intent.action.MAIN"/><category android:name="android.intent.category.LAUNCHER"/></intent-filter>
                   </activity>
@@ -187,9 +185,9 @@ jobs:
           EOF
 
           cat > app/src/main/java/me/lunarveil/ui/screens/Logger.kt << 'EOF'
-          package me.lunarveil.ui.screens
+          package io.github.youruser;package me.lunarveil.ui.screens
 
-          import android.os.Environment
+          import android.content.Context
           import androidx.compose.runtime.mutableStateListOf
           import java.io.File
           import java.io.FileWriter
@@ -199,48 +197,43 @@ jobs:
           object Logger {
               val logs = mutableStateListOf<String>()
               private var fileWriter: FileWriter? = null
-              private val sdf = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US)
+              private val sdf = SimpleDateFormat("HH:mm:ss.SSS", Locale.US)
+              lateinit var appContext: Context
 
-              fun init() {
+              fun init(ctx: Context) {
+                  appContext = ctx
                   try {
-                      val dir = File(Environment.getExternalStorageDirectory(), "LunarVeil")
-                      if (!dir.exists()) dir.mkdirs()
-                      val logFile = File(dir, "logs.txt")
+                      val logFile = File(ctx.filesDir, "lunarveil.log")
                       fileWriter = FileWriter(logFile, true)
-                      write("=== LunarVeil started at ${sdf.format(Date())} ===")
+                      val msg = "=== LunarVeil v${ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName} ==="
+                      logs.add(msg)
+                      fileWriter?.write("${sdf.format(Date())} $msg\n")
+                      fileWriter?.flush()
                   } catch (e: Exception) {
-                      logs.add("[ERROR][Logger] Failed to init file: ${e.message}")
+                      logs.add("[ERROR] Logger init failed: ${e.message}")
                   }
               }
 
-              private fun write(msg: String) {
+              fun i(tag: String, msg: String) = log("INFO", tag, msg, null)
+              fun e(tag: String, msg: String, throwable: Throwable? = null) = log("ERROR", tag, msg, throwable)
+              fun d(tag: String, msg: String) = log("DEBUG", tag, msg, null)
+
+              private fun log(level: String, tag: String, msg: String, throwable: Throwable?) {
+                  val line = "[$level][$tag] $msg"
+                  logs.add(line)
                   try {
-                      fileWriter?.write("${sdf.format(Date())} $msg\n")
+                      fileWriter?.write("${sdf.format(Date())} $line\n")
+                      if (throwable != null) {
+                          val stack = throwable.stackTraceToString()
+                          logs.add(stack)
+                          fileWriter?.write("$stack\n")
+                      }
                       fileWriter?.flush()
                   } catch (_: Exception) {}
               }
 
-              fun i(tag: String, msg: String) {
-                  val m = "[INFO][$tag] $msg"
-                  logs.add(m)
-                  write(m)
-              }
-
-              fun e(tag: String, msg: String, throwable: Throwable? = null) {
-                  val m = "[ERROR][$tag] $msg"
-                  logs.add(m)
-                  write(m)
-                  if (throwable != null) {
-                      val stack = throwable.stackTraceToString()
-                      logs.add(stack)
-                      write(stack)
-                  }
-              }
-
-              fun d(tag: String, msg: String) {
-                  val m = "[DEBUG][$tag] $msg"
-                  logs.add(m)
-                  write(m)
+              fun getLogPath(): String {
+                  return File(appContext.filesDir, "lunarveil.log").absolutePath
               }
           }
           EOF
@@ -249,7 +242,6 @@ jobs:
           package me.lunarveil
 
           import android.os.Bundle
-          import android.os.Environment
           import androidx.activity.ComponentActivity
           import androidx.activity.compose.setContent
           import androidx.compose.foundation.clickable
@@ -288,22 +280,21 @@ jobs:
           import me.lunarveil.data.repository.TelegramRepository
           import me.lunarveil.ui.screens.Logger
           import me.lunarveil.ui.theme.LunarVeilTheme
-          import java.io.File
 
           data class TabInfo(val title: String, val icon: ImageVector, val selectedIcon: ImageVector)
 
           class MainActivity : ComponentActivity() {
               override fun onCreate(savedInstanceState: Bundle?) {
                   super.onCreate(savedInstanceState)
-                  Logger.init()
-                  Logger.i("MainActivity", "onCreate started")
+                  Logger.init(this)
+                  Logger.i("MAIN", "onCreate started")
 
                   try {
                       val prefs = AppPreferences(this)
-                      Logger.i("MainActivity", "AppPreferences created")
+                      Logger.i("MAIN", "AppPreferences OK")
                       val setupDone = runBlocking { prefs.setup.first() }
                       val savedOtp = runBlocking { prefs.otp.first() }
-                      Logger.i("MainActivity", "setupDone=$setupDone, otp=${if (savedOtp.isNotEmpty()) "***" else "empty"}")
+                      Logger.i("MAIN", "Setup=$setupDone OTP=${savedOtp.isNotEmpty()}")
 
                       setContent {
                           LunarVeilTheme {
@@ -312,37 +303,37 @@ jobs:
                               var otp by remember { mutableStateOf(savedOtp) }
 
                               if (showSetup) {
-                                  Logger.i("UI", "Showing SetupScreen")
+                                  Logger.i("UI", "SetupScreen")
                                   SetupScreen { t, o, r, p ->
-                                      Logger.i("Setup", "Saving credentials")
+                                      Logger.i("UI", "Saving credentials")
                                       runBlocking { prefs.save(t, o, r, p); otp = p }
-                                      Logger.i("Setup", "Credentials saved")
                                       showSetup = false; showLock = false
                                   }
                               } else if (showLock) {
-                                  Logger.i("UI", "Showing LockScreen")
-                                  LockScreen(otp) { showLock = false; Logger.i("Lock", "Unlocked") }
+                                  Logger.i("UI", "LockScreen")
+                                  LockScreen(otp) { showLock = false }
                               } else {
-                                  Logger.i("UI", "Starting MainApp")
+                                  Logger.i("UI", "MainApp")
                                   val token = runBlocking { prefs.token.first() }
                                   val owner = runBlocking { prefs.owner.first() }
                                   val repo = runBlocking { prefs.repo.first() }
-                                  Logger.i("UI", "Credentials: token=${token.take(8)}..., owner=$owner, repo=$repo")
+                                  Logger.i("UI", "Token=${token.take(8)}... Owner=$owner Repo=$repo")
                                   MainApp(token, owner, repo)
                               }
                           }
                       }
                   } catch (e: Exception) {
-                      Logger.e("MainActivity", "FATAL CRASH", e)
+                      Logger.e("MAIN", "FATAL", e)
+                      val logPath = try { Logger.getLogPath() } catch (_: Exception) { "N/A" }
                       setContent {
                           LunarVeilTheme {
                               Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                  Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                      Text(text = "App Crashed", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.error)
-                                      Spacer(modifier = Modifier.height(8.dp))
-                                      Text(text = "Check /sdcard/LunarVeil/logs.txt", style = MaterialTheme.typography.bodySmall)
-                                      Spacer(modifier = Modifier.height(8.dp))
-                                      Text(text = e.message ?: "Unknown", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                                  Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(32.dp)) {
+                                      Text("❌ Crash", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.error)
+                                      Spacer(Modifier.height(16.dp))
+                                      Text(e.message ?: "Unknown error", style = MaterialTheme.typography.bodyMedium)
+                                      Spacer(Modifier.height(16.dp))
+                                      Text("Log: $logPath", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                   }
                               }
                           }
@@ -355,34 +346,34 @@ jobs:
               var token by remember { mutableStateOf("") }; var owner by remember { mutableStateOf("") }; var repo by remember { mutableStateOf("") }; var otp by remember { mutableStateOf("") }
               Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                   Column(modifier = Modifier.fillMaxSize().padding(32.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-                      Text(text = "🌙 LunarVeil", style = MaterialTheme.typography.headlineLarge); Spacer(modifier = Modifier.height(24.dp))
-                      OutlinedTextField(value = token, onValueChange = { token = it }, label = { Text("GitHub Token") }, visualTransformation = PasswordVisualTransformation(), singleLine = true, modifier = Modifier.fillMaxWidth())
-                      Spacer(modifier = Modifier.height(8.dp)); OutlinedTextField(value = owner, onValueChange = { owner = it }, label = { Text("Repo Owner") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                      Spacer(modifier = Modifier.height(8.dp)); OutlinedTextField(value = repo, onValueChange = { repo = it }, label = { Text("Repo Name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
-                      Spacer(modifier = Modifier.height(8.dp)); OutlinedTextField(value = otp, onValueChange = { otp = it }, label = { Text("App Password") }, visualTransformation = PasswordVisualTransformation(), singleLine = true, modifier = Modifier.fillMaxWidth())
-                      Spacer(modifier = Modifier.height(24.dp)); Button(onClick = { onComplete(token, owner, repo, otp) }, enabled = token.isNotBlank() && owner.isNotBlank() && repo.isNotBlank() && otp.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text("Save") }
+                      Text("🌙 LunarVeil", style = MaterialTheme.typography.headlineLarge); Spacer(Modifier.height(24.dp))
+                      OutlinedTextField(token, { token = it }, label = { Text("GitHub Token") }, visualTransformation = PasswordVisualTransformation(), singleLine = true, modifier = Modifier.fillMaxWidth())
+                      Spacer(Modifier.height(8.dp)); OutlinedTextField(owner, { owner = it }, label = { Text("Repo Owner") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                      Spacer(Modifier.height(8.dp)); OutlinedTextField(repo, { repo = it }, label = { Text("Repo Name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
+                      Spacer(Modifier.height(8.dp)); OutlinedTextField(otp, { otp = it }, label = { Text("App Password") }, visualTransformation = PasswordVisualTransformation(), singleLine = true, modifier = Modifier.fillMaxWidth())
+                      Spacer(Modifier.height(24.dp)); Button({ onComplete(token, owner, repo, otp) }, enabled = token.isNotBlank() && owner.isNotBlank() && repo.isNotBlank() && otp.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text("Save") }
                   }
               }
           }
 
           @Composable fun LockScreen(expectedOtp: String, onUnlock: () -> Unit) {
               var otp by remember { mutableStateOf("") }; var error by remember { mutableStateOf(false) }
-              Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                  Column(modifier = Modifier.fillMaxSize().padding(32.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-                      Text(text = "🔒 LunarVeil", style = MaterialTheme.typography.headlineLarge); Spacer(modifier = Modifier.height(24.dp))
-                      OutlinedTextField(value = otp, onValueChange = { otp = it; error = false }, label = { Text("Password") }, visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password), singleLine = true, isError = error, modifier = Modifier.fillMaxWidth())
-                      if (error) Text(text = "Wrong password", color = MaterialTheme.colorScheme.error)
-                      Spacer(modifier = Modifier.height(24.dp)); Button(onClick = { if (otp == expectedOtp) onUnlock() else error = true }, modifier = Modifier.fillMaxWidth()) { Text("Unlock") }
+              Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                  Column(Modifier.fillMaxSize().padding(32.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+                      Text("🔒 LunarVeil", style = MaterialTheme.typography.headlineLarge); Spacer(Modifier.height(24.dp))
+                      OutlinedTextField(otp, { otp = it; error = false }, label = { Text("Password") }, visualTransformation = PasswordVisualTransformation(), keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password), singleLine = true, isError = error, modifier = Modifier.fillMaxWidth())
+                      if (error) Text("Wrong password", color = MaterialTheme.colorScheme.error)
+                      Spacer(Modifier.height(24.dp)); Button({ if (otp == expectedOtp) onUnlock() else error = true }, Modifier.fillMaxWidth()) { Text("Unlock") }
                   }
               }
           }
 
           @Composable fun ChatRow(c: Chat, onClick: () -> Unit) {
-              Surface(modifier = Modifier.fillMaxWidth().clickable(onClick = onClick), color = MaterialTheme.colorScheme.surface) {
-                  Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                      Surface(modifier = Modifier.size(48.dp), shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.primaryContainer) { Box(contentAlignment = Alignment.Center) { Text(text = c.name.take(1).uppercase(), color = MaterialTheme.colorScheme.onPrimaryContainer) } }
-                      Spacer(modifier = Modifier.width(12.dp)); Column(modifier = Modifier.weight(1f)) { Text(text = c.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis); Text(text = c.lastMsg.ifEmpty { c.lastMedia?.let { "📎 Media" } ?: "" }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis) }
-                      if (c.unread > 0) Surface(shape = MaterialTheme.shapes.small, color = MaterialTheme.colorScheme.primary) { Text(text = "${c.unread}", modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimary) }
+              Surface(Modifier.fillMaxWidth().clickable(onClick = onClick), color = MaterialTheme.colorScheme.surface) {
+                  Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                      Surface(Modifier.size(48.dp), shape = MaterialTheme.shapes.extraLarge, color = MaterialTheme.colorScheme.primaryContainer) { Box(contentAlignment = Alignment.Center) { Text(c.name.take(1).uppercase(), color = MaterialTheme.colorScheme.onPrimaryContainer) } }
+                      Spacer(Modifier.width(12.dp)); Column(Modifier.weight(1f)) { Text(c.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium, maxLines = 1, overflow = TextOverflow.Ellipsis); Text(c.lastMsg.ifEmpty { c.lastMedia?.let { "📎 Media" } ?: "" }, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+                      if (c.unread > 0) Surface(shape = MaterialTheme.shapes.small, color = MaterialTheme.colorScheme.primary) { Text("${c.unread}", Modifier.padding(horizontal = 6.dp, vertical = 2.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimary) }
                   }
               }
           }
@@ -390,53 +381,56 @@ jobs:
           @Composable fun ChatScreen(name: String, messages: List<Message>, onBack: () -> Unit, onSend: (String) -> Unit) {
               var input by remember { mutableStateOf("") }; val list = rememberLazyListState()
               LaunchedEffect(messages.size) { if (messages.isNotEmpty()) list.animateScrollToItem(0) }
-              Column(modifier = Modifier.fillMaxSize()) {
-                  Row(modifier = Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) { TextButton(onClick = onBack) { Text("←") }; Text(text = name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+              Column(Modifier.fillMaxSize()) {
+                  Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) { TextButton(onBack) { Text("←") }; Text(name, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis) }
                   HorizontalDivider()
                   LazyColumn(state = list, modifier = Modifier.weight(1f).padding(horizontal = 8.dp), reverseLayout = true) {
-                      items(items = messages.reversed()) { m ->
-                          Column(modifier = Modifier.fillMaxWidth().padding(vertical = 2.dp), horizontalAlignment = if (m.out) Alignment.End else Alignment.Start) {
+                      items(messages.reversed()) { m ->
+                          Column(Modifier.fillMaxWidth().padding(vertical = 2.dp), horizontalAlignment = if (m.out) Alignment.End else Alignment.Start) {
                               Surface(shape = MaterialTheme.shapes.medium, color = if (m.out) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant, modifier = Modifier.widthIn(max = 280.dp)) {
-                                  Column(modifier = Modifier.padding(8.dp)) { if (!m.out && m.sender.isNotBlank()) Text(text = m.sender, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary); if (m.text.isNotBlank()) Text(text = m.text, style = MaterialTheme.typography.bodyMedium); if (!m.media.isNullOrEmpty()) Text(text = "📎 ${m.media}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                                  Column(Modifier.padding(8.dp)) { if (!m.out && m.sender.isNotBlank()) Text(m.sender, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary); if (m.text.isNotBlank()) Text(m.text, style = MaterialTheme.typography.bodyMedium); if (!m.media.isNullOrEmpty()) Text("📎 ${m.media}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                               }
                           }
                       }
                   }
                   HorizontalDivider()
-                  Row(modifier = Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) { OutlinedTextField(value = input, onValueChange = { input = it }, modifier = Modifier.weight(1f), placeholder = { Text("Message...") }, singleLine = true); Spacer(modifier = Modifier.width(8.dp)); Button(onClick = { if (input.isNotBlank()) { onSend(input); input = "" } }) { Text("Send") } }
+                  Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.CenterVertically) { OutlinedTextField(input, { input = it }, Modifier.weight(1f), placeholder = { Text("Message...") }, singleLine = true); Spacer(Modifier.width(8.dp)); Button({ if (input.isNotBlank()) { onSend(input); input = "" } }) { Text("Send") } }
               }
           }
 
           @Composable fun LogsScreen() {
               val list = rememberLazyListState(); val scope = rememberCoroutineScope()
               LaunchedEffect(Logger.logs.size) { if (Logger.logs.isNotEmpty()) scope.launch { list.animateScrollToItem(Logger.logs.size - 1) } }
-              Column(modifier = Modifier.fillMaxSize()) { Row(modifier = Modifier.fillMaxWidth().padding(8.dp), horizontalArrangement = Arrangement.End) { TextButton(onClick = { Logger.logs.clear() }) { Text("Clear") } }; LazyColumn(state = list, modifier = Modifier.fillMaxSize()) { items(items = Logger.logs.toList()) { Text(text = it, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)) } } }
+              Column(Modifier.fillMaxSize()) {
+                  Row(Modifier.fillMaxWidth().padding(8.dp), horizontalArrangement = Arrangement.End) { TextButton({ Logger.logs.clear() }) { Text("Clear") } }
+                  Text("Log path: ${Logger.getLogPath()}", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                  LazyColumn(state = list, Modifier.fillMaxSize()) { items(Logger.logs.toList()) { Text(it, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)) } }
+              }
           }
 
           @Composable fun SettingsScreen(t: String, o: String, r: String, onBack: () -> Unit) {
-              Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                  Column(modifier = Modifier.fillMaxSize().padding(16.dp)) {
-                      Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { TextButton(onClick = onBack) { Text("← Back") }; Spacer(modifier = Modifier.weight(1f)); Text("Settings", style = MaterialTheme.typography.titleLarge) }
-                      Spacer(modifier = Modifier.height(16.dp)); Text("GitHub", style = MaterialTheme.typography.titleMedium); Spacer(modifier = Modifier.height(8.dp))
+              Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                  Column(Modifier.fillMaxSize().padding(16.dp)) {
+                      Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) { TextButton(onBack) { Text("← Back") }; Spacer(Modifier.weight(1f)); Text("Settings", style = MaterialTheme.typography.titleLarge) }
+                      Spacer(Modifier.height(16.dp)); Text("GitHub", style = MaterialTheme.typography.titleMedium); Spacer(Modifier.height(8.dp))
                       ListItem(headlineContent = { Text("Token") }, supportingContent = { Text(t.take(8) + "..." + t.takeLast(4)) }); ListItem(headlineContent = { Text("Repo") }, supportingContent = { Text("$o/$r") })
-                      HorizontalDivider(); Spacer(modifier = Modifier.height(16.dp)); Text("App", style = MaterialTheme.typography.titleMedium); Spacer(modifier = Modifier.height(8.dp))
+                      HorizontalDivider(); Spacer(Modifier.height(16.dp)); Text("App", style = MaterialTheme.typography.titleMedium); Spacer(Modifier.height(8.dp))
                       ListItem(headlineContent = { Text("Version") }, supportingContent = { Text(BuildConfig.VERSION_NAME) })
                   }
               }
           }
 
           @Composable fun AboutScreen(v: String) {
-              Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                  Column(modifier = Modifier.fillMaxSize().padding(32.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
-                      Text("🌙", style = MaterialTheme.typography.displayLarge); Spacer(modifier = Modifier.height(12.dp)); Text("LunarVeil", style = MaterialTheme.typography.headlineLarge); Text("v$v", color = MaterialTheme.colorScheme.onSurfaceVariant)
-                      Spacer(modifier = Modifier.height(24.dp)); Text("Telegram Bridge Client"); Text("Powered by GitHub Actions", color = MaterialTheme.colorScheme.onSurfaceVariant); Spacer(modifier = Modifier.height(24.dp)); Text("me.lunarveil", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+              Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                  Column(Modifier.fillMaxSize().padding(32.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+                      Text("🌙", style = MaterialTheme.typography.displayLarge); Spacer(Modifier.height(12.dp)); Text("LunarVeil", style = MaterialTheme.typography.headlineLarge); Text("v$v", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                      Spacer(Modifier.height(24.dp)); Text("Telegram Bridge Client"); Text("Powered by GitHub Actions", color = MaterialTheme.colorScheme.onSurfaceVariant); Spacer(Modifier.height(24.dp)); Text("me.lunarveil", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                   }
               }
           }
 
           @OptIn(ExperimentalMaterial3Api::class)
-          @Composable
-          fun MainApp(token: String, owner: String, repo: String) {
+          @Composable fun MainApp(token: String, owner: String, repo: String) {
               val nav = rememberNavController(); val drawer = rememberDrawerState(DrawerValue.Closed); val scope = rememberCoroutineScope()
               var chats by remember { mutableStateOf<List<Chat>>(emptyList()) }; var msgs by remember { mutableStateOf<List<Message>>(emptyList()) }; var loading by remember { mutableStateOf(true) }
               var cId by remember { mutableStateOf<Long?>(null) }; var cName by remember { mutableStateOf("") }
@@ -447,12 +441,7 @@ jobs:
               LaunchedEffect(Unit) {
                   Logger.i("MainApp", "Fetching chats...")
                   loading = true; error = null
-                  withContext(Dispatchers.IO) {
-                      repository.getChats().fold(
-                          onSuccess = { chats = it; Logger.i("MainApp", "Loaded ${it.size} chats") },
-                          onFailure = { error = it.message; Logger.e("MainApp", "Failed to load chats", it) }
-                      )
-                  }
+                  withContext(Dispatchers.IO) { repository.getChats().fold(onSuccess = { chats = it }, onFailure = { error = it.message; Logger.e("MainApp", "Chats failed", it) }) }
                   loading = false
               }
 
@@ -461,65 +450,28 @@ jobs:
 
               ModalNavigationDrawer(drawerState = drawer, gesturesEnabled = !detail, drawerContent = {
                   ModalDrawerSheet {
-                      Spacer(modifier = Modifier.height(16.dp)); Text(text = "LunarVeil", modifier = Modifier.padding(16.dp), style = MaterialTheme.typography.headlineSmall); HorizontalDivider()
-                      NavigationDrawerItem(
-                          icon = { Text("▶") },
-                          label = { Text("Run Workflow") },
-                          selected = false,
-                          onClick = {
-                              Logger.i("MainApp", "Run Workflow clicked")
-                              scope.launch {
-                                  drawer.close()
-                                  withContext(Dispatchers.IO) { repository.trigger(Gson().toJson(listOf(mapOf("type" to "get_chats")))) }
-                                  snack.showSnackbar("Triggered!")
-                              }
-                          }
-                      )
-                      NavigationDrawerItem(
-                          icon = { Text("⬇") },
-                          label = { Text("Fetch Results") },
-                          selected = false,
-                          onClick = {
-                              Logger.i("MainApp", "Fetch clicked")
-                              scope.launch {
-                                  drawer.close()
-                                  loading = true; error = null
-                                  withContext(Dispatchers.IO) { repository.getChats().fold(onSuccess = { chats = it }, onFailure = { error = it.message }) }
-                                  loading = false
-                              }
-                          }
-                      )
+                      Spacer(Modifier.height(16.dp)); Text("LunarVeil", Modifier.padding(16.dp), style = MaterialTheme.typography.headlineSmall); HorizontalDivider()
+                      NavigationDrawerItem(icon = { Text("▶") }, label = { Text("Run Workflow") }, selected = false, onClick = { scope.launch { drawer.close(); withContext(Dispatchers.IO) { repository.trigger(Gson().toJson(listOf(mapOf("type" to "get_chats")))) }; snack.showSnackbar("Triggered!") } })
+                      NavigationDrawerItem(icon = { Text("⬇") }, label = { Text("Fetch Results") }, selected = false, onClick = { scope.launch { drawer.close(); loading = true; error = null; withContext(Dispatchers.IO) { repository.getChats().fold(onSuccess = { chats = it }, onFailure = { error = it.message }) }; loading = false } })
                       HorizontalDivider()
-                      NavigationDrawerItem(
-                          icon = { Text("⚙") },
-                          label = { Text("Settings") },
-                          selected = false,
-                          onClick = { scope.launch { drawer.close(); nav.navigate("settings") } }
-                      )
+                      NavigationDrawerItem(icon = { Text("⚙") }, label = { Text("Settings") }, selected = false, onClick = { scope.launch { drawer.close(); nav.navigate("settings") } })
                   }
               }) {
-                  Scaffold(
-                      snackbarHost = { SnackbarHost(snack) },
-                      topBar = { if (!detail) TopAppBar(title = { Text("LunarVeil") }, navigationIcon = { IconButton(onClick = { scope.launch { drawer.open() } }) { Icon(imageVector = Icons.Default.Menu, contentDescription = "Menu") } }, colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)) },
-                      bottomBar = { if (!detail) NavigationBar { tabs.forEachIndexed { i, t -> val sel = dest?.hierarchy?.any { it.route == "s$i" } == true; NavigationBarItem(icon = { Icon(imageVector = if (sel) t.selectedIcon else t.icon, contentDescription = t.title) }, label = { Text(t.title) }, selected = sel, onClick = { nav.navigate("s$i") { popUpTo(nav.graph.findStartDestination().id) { saveState = true }; launchSingleTop = true; restoreState = true } }) } } }
+                  Scaffold(snackbarHost = { SnackbarHost(snack) },
+                      topBar = { if (!detail) TopAppBar(title = { Text("LunarVeil") }, navigationIcon = { IconButton({ scope.launch { drawer.open() } }) { Icon(Icons.Default.Menu, "Menu") } }, colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)) },
+                      bottomBar = { if (!detail) NavigationBar { tabs.forEachIndexed { i, t -> val sel = dest?.hierarchy?.any { it.route == "s$i" } == true; NavigationBarItem(icon = { Icon(if (sel) t.selectedIcon else t.icon, t.title) }, label = { Text(t.title) }, selected = sel, onClick = { nav.navigate("s$i") { popUpTo(nav.graph.findStartDestination().id) { saveState = true }; launchSingleTop = true; restoreState = true } }) } } }
                   ) { inner ->
-                      NavHost(navController = nav, startDestination = "s0", modifier = Modifier.padding(inner)) {
-                          composable(route = "s0") {
-                              if (loading) { Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() } }
-                              else if (error != null) { Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Column(horizontalAlignment = Alignment.CenterHorizontally) { Text(text = "⚠️ $error", color = MaterialTheme.colorScheme.error); Spacer(modifier = Modifier.height(16.dp)); Button(onClick = { loading = true; scope.launch { withContext(Dispatchers.IO) { repository.getChats().fold(onSuccess = { chats = it; error = null }, onFailure = { error = it.message }) }; loading = false } }) { Text("Retry") } } } }
-                              else if (chats.isEmpty()) { Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Column(horizontalAlignment = Alignment.CenterHorizontally) { Text("No chats"); Spacer(modifier = Modifier.height(8.dp)); Button(onClick = { scope.launch { drawer.open() } }) { Text("Open Menu") } } } }
-                              else {
-                                  val main = chats.filter { !it.archived }; val arch = chats.filter { it.archived }
-                                  LazyColumn(modifier = Modifier.fillMaxSize()) {
-                                      items(items = main) { c -> ChatRow(c = c, onClick = { cId = c.id; cName = c.name; Logger.d("ChatList", "Opening chat ${c.id}"); scope.launch { withContext(Dispatchers.IO) { repository.getMessages(c.id).fold(onSuccess = { msgs = it }, onFailure = { Logger.e("ChatList", "Messages failed", it) }) }; nav.navigate("detail") } }) }
-                                      if (arch.isNotEmpty()) { item { Text(text = "📦 Archived", modifier = Modifier.padding(12.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }; items(items = arch) { c -> ChatRow(c = c, onClick = { cId = c.id; cName = c.name; scope.launch { withContext(Dispatchers.IO) { repository.getMessages(c.id).fold(onSuccess = { msgs = it }, onFailure = { Logger.e("ChatList", "Messages failed", it) }) }; nav.navigate("detail") } }) } }
-                                  }
-                              }
+                      NavHost(nav, "s0", Modifier.padding(inner)) {
+                          composable("s0") {
+                              if (loading) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                              else if (error != null) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Column(horizontalAlignment = Alignment.CenterHorizontally) { Text("⚠️ $error", color = MaterialTheme.colorScheme.error); Spacer(Modifier.height(16.dp)); Button({ loading = true; scope.launch { withContext(Dispatchers.IO) { repository.getChats().fold(onSuccess = { chats = it; error = null }, onFailure = { error = it.message }) }; loading = false } }) { Text("Retry") } } }
+                              else if (chats.isEmpty()) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Column(horizontalAlignment = Alignment.CenterHorizontally) { Text("No chats"); Spacer(Modifier.height(8.dp)); Button({ scope.launch { drawer.open() } }) { Text("Open Menu") } } }
+                              else { val main = chats.filter { !it.archived }; val arch = chats.filter { it.archived }; LazyColumn(Modifier.fillMaxSize()) { items(main) { c -> ChatRow(c) { cId = c.id; cName = c.name; scope.launch { withContext(Dispatchers.IO) { repository.getMessages(c.id).fold(onSuccess = { msgs = it }, onFailure = {}) }; nav.navigate("detail") } } }; if (arch.isNotEmpty()) { item { Text("📦 Archived", Modifier.padding(12.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }; items(arch) { c -> ChatRow(c) { cId = c.id; cName = c.name; scope.launch { withContext(Dispatchers.IO) { repository.getMessages(c.id).fold(onSuccess = { msgs = it }, onFailure = {}) }; nav.navigate("detail") } } } } }
                           }
-                          composable(route = "detail") { ChatScreen(name = cName, messages = msgs, onBack = { nav.popBackStack() }, onSend = { txt -> Logger.i("ChatScreen", "Sending: $txt"); scope.launch { repository.trigger(Gson().toJson(listOf(mapOf("type" to "send_message", "chat_id" to cId, "text" to txt), mapOf("type" to "get_messages", "chat_id" to cId, "limit" to 50)))); snack.showSnackbar("Queued!") } }) }
-                          composable(route = "settings") { SettingsScreen(t = token, o = owner, r = repo, onBack = { nav.popBackStack() }) }
-                          composable(route = "s1") { LogsScreen() }
-                          composable(route = "s2") { AboutScreen(v = BuildConfig.VERSION_NAME) }
+                          composable("detail") { ChatScreen(cName, msgs, { nav.popBackStack() }, { txt -> scope.launch { repository.trigger(Gson().toJson(listOf(mapOf("type" to "send_message", "chat_id" to cId, "text" to txt), mapOf("type" to "get_messages", "chat_id" to cId, "limit" to 50)))); snack.showSnackbar("Queued!") } }) }
+                          composable("settings") { SettingsScreen(token, owner, repo) { nav.popBackStack() } }
+                          composable("s1") { LogsScreen() }
+                          composable("s2") { AboutScreen(BuildConfig.VERSION_NAME) }
                       }
                   }
               }
