@@ -1,4 +1,4 @@
-name: Build & Release LunarVeil APK
+name: Build & Release LunarVeil APK (Chunked ZIP)
 
 on:
   workflow_dispatch:
@@ -7,23 +7,18 @@ on:
         description: 'Version name (e.g. 1.0.0)'
         required: true
       chunk_size_mb:
-        description: 'Chunk size (MB)'
-        default: '5'
+        description: 'Max size per ZIP chunk (MB)'
+        default: '90'
         required: false
       clean_old_builds:
-        description: 'Delete all previous APK builds before this one'
-        type: boolean
-        default: false
-        required: false
-      create_zip:
-        description: 'Also create a ZIP of all chunks'
+        description: 'Delete all previous builds'
         type: boolean
         default: false
         required: false
 
 env:
   VERSION: ${{ github.event.inputs.version_name }}
-  CHUNK_SIZE_MB: ${{ github.event.inputs.chunk_size_mb || '5' }}
+  CHUNK_SIZE_MB: ${{ github.event.inputs.chunk_size_mb || '90' }}
 
 permissions:
   contents: write
@@ -42,7 +37,6 @@ jobs:
           git config user.email "actions@github.com"
           git add builds
           git diff --cached --quiet || (git commit -m "🧹 Clean old builds" && git push)
-          # Re-checkout to get clean state after push
           git pull
 
       - name: Set up JDK 17
@@ -61,32 +55,52 @@ jobs:
       - name: Build debug APK
         run: ./gradlew assembleDebug
 
-      - name: Split APK into chunks and optionally ZIP
+      - name: Create chunked ZIP files
         run: |
           APK_PATH=$(find app/build/outputs/apk/debug -name '*.apk' | head -n 1)
-          mkdir -p release_chunks
-          CHUNK_SIZE=$(( CHUNK_SIZE_MB * 1024 * 1024 ))
-          split -b $CHUNK_SIZE -d --numeric-suffixes=1 -a 3 "$APK_PATH" release_chunks/chunk.
-          TOTAL_SIZE=$(stat -c%s "$APK_PATH")
-          NUM_CHUNKS=$(ls release_chunks/chunk.* | wc -l)
-          echo "{\"version\":\"$VERSION\",\"size\":$TOTAL_SIZE,\"chunks\":$NUM_CHUNKS,\"chunk_size_mb\":$CHUNK_SIZE_MB}" > release_chunks/meta.json
+          BUILD_DIR="builds/$VERSION"
+          mkdir -p "$BUILD_DIR"
           
-          # Create ZIP if requested
-          if [ "${{ github.event.inputs.create_zip }}" == "true" ]; then
-            cd release_chunks
-            zip -r "../LunarVeil_v${VERSION}_chunks.zip" *
-            cd ..
-          fi
+          # Split APK into raw chunks
+          CHUNK_SIZE=$(( CHUNK_SIZE_MB * 1024 * 1024 ))
+          split -b $CHUNK_SIZE -d --numeric-suffixes=1 -a 3 "$APK_PATH" chunks/chunk.
+          
+          # Package each chunk as its own ZIP
+          cd chunks
+          for f in chunk.*; do
+            zip "../$BUILD_DIR/${f}.zip" "$f"
+          done
+          cd ..
+          
+          # Create metadata
+          TOTAL_SIZE=$(stat -c%s "$APK_PATH")
+          NUM_CHUNKS=$(ls "$BUILD_DIR"/*.zip | wc -l)
+          cat > "$BUILD_DIR/info.json" << INFO
+          {
+            "version": "$VERSION",
+            "apk_name": "$(basename "$APK_PATH")",
+            "total_size": $TOTAL_SIZE,
+            "total_chunks": $NUM_CHUNKS,
+            "chunk_size_mb": $CHUNK_SIZE_MB,
+            "download_urls": [
+          INFO
+          
+          for i in $(seq 1 $NUM_CHUNKS); do
+            PADDED=$(printf "%03d" $i)
+            echo "    \"https://raw.githubusercontent.com/\${{ github.repository }}/main/$BUILD_DIR/chunk.${PADDED}.zip\"," >> "$BUILD_DIR/info.json"
+          done
+          
+          # Remove trailing comma from last URL
+          sed -i '$ s/,$//' "$BUILD_DIR/info.json"
+          echo '  ]' >> "$BUILD_DIR/info.json"
+          echo '}' >> "$BUILD_DIR/info.json"
+          
+          rm -rf chunks
 
-      - name: Store chunks in builds/<version>
-        run: |
-          mkdir -p builds/$VERSION
-          cp -r release_chunks/* builds/$VERSION/
-
-      - name: Commit APK chunks
+      - name: Commit ZIP chunks
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           git add builds/
-          git commit -m "🌙 LunarVeil v$VERSION APK chunks" || echo "No changes"
+          git commit -m "🌙 LunarVeil v$VERSION – chunked ZIPs" || echo "No changes"
           git push
