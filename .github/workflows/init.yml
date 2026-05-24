@@ -427,7 +427,7 @@ jobs:
 
           # DataStore preferences
           cat > app/src/main/java/me/lunarveil/data/local/AppPreferences.kt << 'EOF'
-          package io.require;package me.lunarveil.data.local
+          package me.lunarveil.data.local
 
           import android.content.Context
           import androidx.datastore.core.DataStore
