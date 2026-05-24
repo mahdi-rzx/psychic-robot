@@ -1,4 +1,4 @@
-name: Build & Release LunarVeil APK (Chunked ZIP)
+name: Build & Release LunarVeil APK (Split ZIP)
 
 on:
   workflow_dispatch:
@@ -7,7 +7,7 @@ on:
         description: 'Version name (e.g. 1.0.0)'
         required: true
       chunk_size_mb:
-        description: 'Max size per ZIP chunk (MB)'
+        description: 'Max size per split file (MB)'
         default: '90'
         required: false
       clean_old_builds:
@@ -55,32 +55,40 @@ jobs:
       - name: Build debug APK
         run: ./gradlew assembleDebug
 
-      - name: Create chunked ZIP files
+      - name: Create split ZIP (file.zip.001, file.zip.002, …)
         run: |
           APK_PATH=$(find app/build/outputs/apk/debug -name '*.apk' | head -n 1)
+          APK_NAME="LunarVeil_v$VERSION.apk"
           BUILD_DIR="builds/$VERSION"
-          CHUNK_DIR="chunks_tmp"
           mkdir -p "$BUILD_DIR"
-          mkdir -p "$CHUNK_DIR"
 
-          # Split APK into raw chunks
+          # Copy and rename APK
+          cp "$APK_PATH" "$APK_NAME"
+
+          # Zip the APK
+          ZIP_NAME="LunarVeil_v$VERSION.zip"
+          zip "$ZIP_NAME" "$APK_NAME"
+          rm "$APK_NAME"
+
+          # Split the ZIP into file.zip.001, file.zip.002, ...
           CHUNK_SIZE=$(( CHUNK_SIZE_MB * 1024 * 1024 ))
-          split -b $CHUNK_SIZE -d --numeric-suffixes=1 -a 3 "$APK_PATH" "$CHUNK_DIR/chunk."
-
-          # Package each chunk as its own ZIP
-          cd "$CHUNK_DIR"
-          for f in chunk.*; do
-            zip "../$BUILD_DIR/${f}.zip" "$f"
-          done
-          cd ..
+          split -b $CHUNK_SIZE -d --numeric-suffixes=1 -a 3 "$ZIP_NAME" "$BUILD_DIR/$ZIP_NAME."
+          rm "$ZIP_NAME"
 
           # Create metadata
-          TOTAL_SIZE=$(stat -c%s "$APK_PATH")
-          NUM_CHUNKS=$(ls "$BUILD_DIR"/*.zip 2>/dev/null | wc -l)
+          TOTAL_SIZE=$(stat -c%s "$BUILD_DIR/$ZIP_NAME.001")  # size of first chunk
+          NUM_CHUNKS=$(ls "$BUILD_DIR/$ZIP_NAME."* 2>/dev/null | wc -l)
+          
+          # Calculate total size across all chunks
+          TOTAL_SIZE=0
+          for f in "$BUILD_DIR/$ZIP_NAME."*; do
+            TOTAL_SIZE=$((TOTAL_SIZE + $(stat -c%s "$f")))
+          done
+
           cat > "$BUILD_DIR/info.json" << INFO
           {
             "version": "$VERSION",
-            "apk_name": "$(basename "$APK_PATH")",
+            "zip_name": "$ZIP_NAME",
             "total_size": $TOTAL_SIZE,
             "total_chunks": $NUM_CHUNKS,
             "chunk_size_mb": $CHUNK_SIZE_MB,
@@ -89,20 +97,17 @@ jobs:
 
           for i in $(seq 1 $NUM_CHUNKS); do
             PADDED=$(printf "%03d" $i)
-            echo "    \"https://raw.githubusercontent.com/${{ github.repository }}/main/$BUILD_DIR/chunk.${PADDED}.zip\"," >> "$BUILD_DIR/info.json"
+            echo "    \"https://raw.githubusercontent.com/${{ github.repository }}/main/$BUILD_DIR/${ZIP_NAME}.${PADDED}\"," >> "$BUILD_DIR/info.json"
           done
 
-          # Remove trailing comma from last URL
           sed -i '$ s/,$//' "$BUILD_DIR/info.json"
           echo '  ]' >> "$BUILD_DIR/info.json"
           echo '}' >> "$BUILD_DIR/info.json"
 
-          rm -rf "$CHUNK_DIR"
-
-      - name: Commit ZIP chunks
+      - name: Commit split ZIP chunks
         run: |
           git config user.name "github-actions"
           git config user.email "actions@github.com"
           git add builds/
-          git commit -m "🌙 LunarVeil v$VERSION – chunked ZIPs" || echo "No changes"
+          git commit -m "🌙 LunarVeil v$VERSION – split ZIP" || echo "No changes"
           git push
