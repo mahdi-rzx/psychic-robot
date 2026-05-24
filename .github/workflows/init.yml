@@ -326,8 +326,8 @@ jobs:
                       val logPath = try { Logger.getLogPath() } catch (_: Exception) { "N/A" }
                       setContent {
                           LunarVeilTheme {
-                              Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                                  Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.padding(32.dp)) {
+                              Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                  Column(Modifier.padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                                       Text("❌ Crash", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.error)
                                       Spacer(Modifier.height(16.dp))
                                       Text(e.message ?: "Unknown error", style = MaterialTheme.typography.bodyMedium)
@@ -343,8 +343,8 @@ jobs:
 
           @Composable fun SetupScreen(onComplete: (String, String, String, String) -> Unit) {
               var token by remember { mutableStateOf("") }; var owner by remember { mutableStateOf("") }; var repo by remember { mutableStateOf("") }; var otp by remember { mutableStateOf("") }
-              Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                  Column(modifier = Modifier.fillMaxSize().padding(32.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
+              Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                  Column(Modifier.fillMaxSize().padding(32.dp), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
                       Text("🌙 LunarVeil", style = MaterialTheme.typography.headlineLarge); Spacer(Modifier.height(24.dp))
                       OutlinedTextField(token, { token = it }, label = { Text("GitHub Token") }, visualTransformation = PasswordVisualTransformation(), singleLine = true, modifier = Modifier.fillMaxWidth())
                       Spacer(Modifier.height(8.dp)); OutlinedTextField(owner, { owner = it }, label = { Text("Repo Owner") }, singleLine = true, modifier = Modifier.fillMaxWidth())
@@ -403,7 +403,7 @@ jobs:
               Column(Modifier.fillMaxSize()) {
                   Row(Modifier.fillMaxWidth().padding(8.dp), horizontalArrangement = Arrangement.End) { TextButton({ Logger.logs.clear() }) { Text("Clear") } }
                   Text("Log: ${Logger.getLogPath()}", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                  LazyColumn(state = list, Modifier.fillMaxSize()) { items(Logger.logs.toList()) { Text(it, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)) } }
+                  LazyColumn(state = list, modifier = Modifier.fillMaxSize()) { items(Logger.logs.toList()) { Text(it, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)) } }
               }
           }
 
@@ -430,44 +430,261 @@ jobs:
 
           @OptIn(ExperimentalMaterial3Api::class)
           @Composable fun MainApp(token: String, owner: String, repo: String) {
-              val nav = rememberNavController(); val drawer = rememberDrawerState(DrawerValue.Closed); val scope = rememberCoroutineScope()
-              var chats by remember { mutableStateOf<List<Chat>>(emptyList()) }; var msgs by remember { mutableStateOf<List<Message>>(emptyList()) }; var loading by remember { mutableStateOf(true) }
-              var cId by remember { mutableStateOf<Long?>(null) }; var cName by remember { mutableStateOf("") }
+              val nav = rememberNavController()
+              val drawer = rememberDrawerState(DrawerValue.Closed)
+              val scope = rememberCoroutineScope()
+              var chats by remember { mutableStateOf<List<Chat>>(emptyList()) }
+              var msgs by remember { mutableStateOf<List<Message>>(emptyList()) }
+              var loading by remember { mutableStateOf(true) }
+              var cId by remember { mutableStateOf<Long?>(null) }
+              var cName by remember { mutableStateOf("") }
               var error by remember { mutableStateOf<String?>(null) }
               val snack = remember { SnackbarHostState() }
               val repository = remember { TelegramRepository(RetrofitClient.api, token, owner, repo) }
-              val tabs = listOf(TabInfo("Chats", Icons.Outlined.Chat, Icons.Filled.Chat), TabInfo("Logs", Icons.Outlined.List, Icons.Filled.List), TabInfo("About", Icons.Outlined.Info, Icons.Filled.Info))
-              val bs by nav.currentBackStackEntryAsState(); val dest = bs?.destination; val detail = dest?.route == "detail" || dest?.route == "settings"
+              val tabs = listOf(
+                  TabInfo("Chats", Icons.Outlined.Chat, Icons.Filled.Chat),
+                  TabInfo("Logs", Icons.Outlined.List, Icons.Filled.List),
+                  TabInfo("About", Icons.Outlined.Info, Icons.Filled.Info)
+              )
+              val bs by nav.currentBackStackEntryAsState()
+              val dest = bs?.destination
+              val detail = dest?.route == "detail" || dest?.route == "settings"
 
               LaunchedEffect(Unit) {
                   Logger.i("MainApp", "Fetching chats...")
                   loading = true; error = null
-                  withContext(Dispatchers.IO) { repository.getChats().fold(onSuccess = { chats = it }, onFailure = { error = it.message; Logger.e("MainApp", "Chats failed", it) }) }
+                  withContext(Dispatchers.IO) {
+                      repository.getChats().fold(
+                          onSuccess = { chats = it },
+                          onFailure = { error = it.message; Logger.e("MainApp", "Chats failed", it) }
+                      )
+                  }
                   loading = false
               }
 
-              ModalNavigationDrawer(drawerState = drawer, gesturesEnabled = !detail, drawerContent = {
-                  ModalDrawerSheet {
-                      Spacer(Modifier.height(16.dp)); Text("LunarVeil", Modifier.padding(16.dp), style = MaterialTheme.typography.headlineSmall); HorizontalDivider()
-                      NavigationDrawerItem(icon = { Text("▶") }, label = { Text("Run Workflow") }, selected = false, onClick = { scope.launch { drawer.close(); withContext(Dispatchers.IO) { repository.trigger(Gson().toJson(listOf(mapOf("type" to "get_chats")))) }; snack.showSnackbar("Triggered!") } })
-                      NavigationDrawerItem(icon = { Text("⬇") }, label = { Text("Fetch Results") }, selected = false, onClick = { scope.launch { drawer.close(); loading = true; error = null; withContext(Dispatchers.IO) { repository.getChats().fold(onSuccess = { chats = it }, onFailure = { error = it.message }) }; loading = false } })
-                      HorizontalDivider()
-                      NavigationDrawerItem(icon = { Text("⚙") }, label = { Text("Settings") }, selected = false, onClick = { scope.launch { drawer.close(); nav.navigate("settings") } })
+              ModalNavigationDrawer(
+                  drawerState = drawer,
+                  gesturesEnabled = !detail,
+                  drawerContent = {
+                      ModalDrawerSheet {
+                          Spacer(Modifier.height(16.dp))
+                          Text("LunarVeil", Modifier.padding(16.dp), style = MaterialTheme.typography.headlineSmall)
+                          HorizontalDivider()
+                          NavigationDrawerItem(
+                              icon = { Text("▶") },
+                              label = { Text("Run Workflow") },
+                              selected = false,
+                              onClick = {
+                                  scope.launch {
+                                      drawer.close()
+                                      withContext(Dispatchers.IO) {
+                                          repository.trigger(Gson().toJson(listOf(mapOf("type" to "get_chats"))))
+                                      }
+                                      snack.showSnackbar("Triggered!")
+                                  }
+                              }
+                          )
+                          NavigationDrawerItem(
+                              icon = { Text("⬇") },
+                              label = { Text("Fetch Results") },
+                              selected = false,
+                              onClick = {
+                                  scope.launch {
+                                      drawer.close()
+                                      loading = true; error = null
+                                      withContext(Dispatchers.IO) {
+                                          repository.getChats().fold(
+                                              onSuccess = { chats = it },
+                                              onFailure = { error = it.message }
+                                          )
+                                      }
+                                      loading = false
+                                  }
+                              }
+                          )
+                          HorizontalDivider()
+                          NavigationDrawerItem(
+                              icon = { Text("⚙") },
+                              label = { Text("Settings") },
+                              selected = false,
+                              onClick = {
+                                  scope.launch { drawer.close(); nav.navigate("settings") }
+                              }
+                          )
+                      }
                   }
-              }) {
-                  Scaffold(snackbarHost = { SnackbarHost(snack) },
-                      topBar = { if (!detail) TopAppBar(title = { Text("LunarVeil") }, navigationIcon = { IconButton({ scope.launch { drawer.open() } }) { Icon(Icons.Default.Menu, "Menu") } }, colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)) },
-                      bottomBar = { if (!detail) NavigationBar { tabs.forEachIndexed { i, t -> val sel = dest?.hierarchy?.any { it.route == "s$i" } == true; NavigationBarItem(icon = { Icon(if (sel) t.selectedIcon else t.icon, t.title) }, label = { Text(t.title) }, selected = sel, onClick = { nav.navigate("s$i") { popUpTo(nav.graph.findStartDestination().id) { saveState = true }; launchSingleTop = true; restoreState = true } }) } } }
+              ) {
+                  Scaffold(
+                      snackbarHost = { SnackbarHost(snack) },
+                      topBar = {
+                          if (!detail) {
+                              TopAppBar(
+                                  title = { Text("LunarVeil") },
+                                  navigationIcon = {
+                                      IconButton({ scope.launch { drawer.open() } }) {
+                                          Icon(Icons.Default.Menu, "Menu")
+                                      }
+                                  },
+                                  colors = TopAppBarDefaults.topAppBarColors(
+                                      containerColor = MaterialTheme.colorScheme.surface
+                                  )
+                              )
+                          }
+                      },
+                      bottomBar = {
+                          if (!detail) {
+                              NavigationBar {
+                                  tabs.forEachIndexed { i, t ->
+                                      val sel = dest?.hierarchy?.any { it.route == "s$i" } == true
+                                      NavigationBarItem(
+                                          icon = {
+                                              Icon(
+                                                  if (sel) t.selectedIcon else t.icon,
+                                                  t.title
+                                              )
+                                          },
+                                          label = { Text(t.title) },
+                                          selected = sel,
+                                          onClick = {
+                                              nav.navigate("s$i") {
+                                                  popUpTo(nav.graph.findStartDestination().id) {
+                                                      saveState = true
+                                                  }
+                                                  launchSingleTop = true
+                                                  restoreState = true
+                                              }
+                                          }
+                                      )
+                                  }
+                              }
+                          }
+                      }
                   ) { inner ->
                       NavHost(nav, "s0", Modifier.padding(inner)) {
                           composable("s0") {
-                              if (loading) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-                              else if (error != null) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Column(horizontalAlignment = Alignment.CenterHorizontally) { Text("⚠️ $error", color = MaterialTheme.colorScheme.error); Spacer(Modifier.height(16.dp)); Button({ loading = true; scope.launch { withContext(Dispatchers.IO) { repository.getChats().fold(onSuccess = { chats = it; error = null }, onFailure = { error = it.message }) }; loading = false } }) { Text("Retry") } } }
-                              else if (chats.isEmpty()) Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Column(horizontalAlignment = Alignment.CenterHorizontally) { Text("No chats"); Spacer(Modifier.height(8.dp)); Button({ scope.launch { drawer.open() } }) { Text("Open Menu") } } }
-                              else { val main = chats.filter { !it.archived }; val arch = chats.filter { it.archived }; LazyColumn(Modifier.fillMaxSize()) { items(main) { c -> ChatRow(c) { cId = c.id; cName = c.name; scope.launch { withContext(Dispatchers.IO) { repository.getMessages(c.id).fold(onSuccess = { msgs = it }, onFailure = {}) }; nav.navigate("detail") } } }; if (arch.isNotEmpty()) { item { Text("📦 Archived", Modifier.padding(12.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }; items(arch) { c -> ChatRow(c) { cId = c.id; cName = c.name; scope.launch { withContext(Dispatchers.IO) { repository.getMessages(c.id).fold(onSuccess = { msgs = it }, onFailure = {}) }; nav.navigate("detail") } } } } }
+                              if (loading) {
+                                  Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                      CircularProgressIndicator()
+                                  }
+                              } else if (error != null) {
+                                  Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                      Column(
+                                          Modifier.fillMaxSize(),
+                                          horizontalAlignment = Alignment.CenterHorizontally,
+                                          verticalArrangement = Arrangement.Center
+                                      ) {
+                                          Text(
+                                              "⚠️ $error",
+                                              color = MaterialTheme.colorScheme.error
+                                          )
+                                          Spacer(Modifier.height(16.dp))
+                                          Button({
+                                              loading = true
+                                              scope.launch {
+                                                  withContext(Dispatchers.IO) {
+                                                      repository.getChats().fold(
+                                                          onSuccess = { chats = it; error = null },
+                                                          onFailure = { error = it.message }
+                                                      )
+                                                  }
+                                                  loading = false
+                                              }
+                                          }) {
+                                              Text("Retry")
+                                          }
+                                      }
+                                  }
+                              } else if (chats.isEmpty()) {
+                                  Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                      Column(
+                                          Modifier.fillMaxSize(),
+                                          horizontalAlignment = Alignment.CenterHorizontally,
+                                          verticalArrangement = Arrangement.Center
+                                      ) {
+                                          Text("No chats")
+                                          Spacer(Modifier.height(8.dp))
+                                          Button({
+                                              scope.launch { drawer.open() }
+                                          }) {
+                                              Text("Open Menu")
+                                          }
+                                      }
+                                  }
+                              } else {
+                                  val main = chats.filter { !it.archived }
+                                  val arch = chats.filter { it.archived }
+                                  LazyColumn(Modifier.fillMaxSize()) {
+                                      items(main) { c ->
+                                          ChatRow(c) {
+                                              cId = c.id; cName = c.name
+                                              scope.launch {
+                                                  withContext(Dispatchers.IO) {
+                                                      repository.getMessages(c.id).fold(
+                                                          onSuccess = { msgs = it },
+                                                          onFailure = {}
+                                                      )
+                                                  }
+                                                  nav.navigate("detail")
+                                              }
+                                          }
+                                      }
+                                      if (arch.isNotEmpty()) {
+                                          item {
+                                              Text(
+                                                  "📦 Archived",
+                                                  Modifier.padding(12.dp),
+                                                  color = MaterialTheme.colorScheme.onSurfaceVariant
+                                              )
+                                          }
+                                          items(arch) { c ->
+                                              ChatRow(c) {
+                                                  cId = c.id; cName = c.name
+                                                  scope.launch {
+                                                      withContext(Dispatchers.IO) {
+                                                          repository.getMessages(c.id).fold(
+                                                              onSuccess = { msgs = it },
+                                                              onFailure = {}
+                                                          )
+                                                      }
+                                                      nav.navigate("detail")
+                                                  }
+                                              }
+                                          }
+                                      }
+                                  }
+                              }
                           }
-                          composable("detail") { ChatScreen(cName, msgs, { nav.popBackStack() }, { txt -> scope.launch { repository.trigger(Gson().toJson(listOf(mapOf("type" to "send_message", "chat_id" to cId, "text" to txt), mapOf("type" to "get_messages", "chat_id" to cId, "limit" to 50)))); snack.showSnackbar("Queued!") } }) }
-                          composable("settings") { SettingsScreen(token, owner, repo) { nav.popBackStack() } }
+                          composable("detail") {
+                              ChatScreen(
+                                  cName,
+                                  msgs,
+                                  { nav.popBackStack() },
+                                  { txt ->
+                                      scope.launch {
+                                          repository.trigger(
+                                              Gson().toJson(
+                                                  listOf(
+                                                      mapOf(
+                                                          "type" to "send_message",
+                                                          "chat_id" to cId,
+                                                          "text" to txt
+                                                      ),
+                                                      mapOf(
+                                                          "type" to "get_messages",
+                                                          "chat_id" to cId,
+                                                          "limit" to 50
+                                                      )
+                                                  )
+                                              )
+                                          )
+                                          snack.showSnackbar("Queued!")
+                                      }
+                                  }
+                              )
+                          }
+                          composable("settings") {
+                              SettingsScreen(token, owner, repo) { nav.popBackStack() }
+                          }
                           composable("s1") { LogsScreen() }
                           composable("s2") { AboutScreen(BuildConfig.VERSION_NAME) }
                       }
