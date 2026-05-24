@@ -377,7 +377,7 @@ jobs:
                   return
               }
               LazyColumn(modifier = Modifier.fillMaxSize()) {
-                  items(items = chats) { c -> ChatRow(chat = c, onClick = { onChatClick(c) }) }
+                  items(chats) { c -> ChatRow(chat = c, onClick = { onChatClick(c) }) }
               }
           }
 
@@ -388,11 +388,11 @@ jobs:
                   color = MaterialTheme.colorScheme.surface
               ) {
                   Row(
-                      modifier = Modifier.padding(all = 12.dp),
+                      modifier = Modifier.padding(12.dp),
                       verticalAlignment = Alignment.CenterVertically
                   ) {
                       Surface(
-                          modifier = Modifier.size(size = 48.dp),
+                          modifier = Modifier.size(48.dp),
                           shape = MaterialTheme.shapes.extraLarge,
                           color = MaterialTheme.colorScheme.primaryContainer
                       ) {
@@ -403,8 +403,8 @@ jobs:
                               )
                           }
                       }
-                      Spacer(modifier = Modifier.width(width = 12.dp))
-                      Column(modifier = Modifier.weight(weight = 1f)) {
+                      Spacer(modifier = Modifier.width(12.dp))
+                      Column(modifier = Modifier.weight(1f)) {
                           Text(
                               text = chat.name,
                               style = MaterialTheme.typography.bodyLarge,
@@ -462,17 +462,13 @@ jobs:
               val listState = rememberLazyListState()
               val scope = rememberCoroutineScope()
 
-              LaunchedEffect(key1 = Logger.logs.size) {
-                  if (Logger.logs.isNotEmpty()) {
-                      scope.launch { listState.animateScrollToItem(index = Logger.logs.size - 1) }
-                  }
+              LaunchedEffect(Logger.logs.size) {
+                  if (Logger.logs.isNotEmpty()) scope.launch { listState.animateScrollToItem(Logger.logs.size - 1) }
               }
 
               Column(modifier = Modifier.fillMaxSize()) {
                   Row(
-                      modifier = Modifier
-                          .fillMaxWidth()
-                          .padding(all = 8.dp),
+                      modifier = Modifier.fillMaxWidth().padding(8.dp),
                       horizontalArrangement = Arrangement.End
                   ) {
                       TextButton(onClick = { Logger.logs.clear() }) {
@@ -483,7 +479,7 @@ jobs:
                       state = listState,
                       modifier = Modifier.fillMaxSize()
                   ) {
-                      items(items = Logger.logs.toList()) { log ->
+                      items(Logger.logs.toList()) { log ->
                           Text(
                               text = log,
                               style = MaterialTheme.typography.bodySmall,
@@ -512,26 +508,15 @@ jobs:
                   color = MaterialTheme.colorScheme.background
               ) {
                   Column(
-                      modifier = Modifier
-                          .fillMaxSize()
-                          .padding(all = 32.dp),
+                      modifier = Modifier.fillMaxSize().padding(32.dp),
                       verticalArrangement = Arrangement.Center,
                       horizontalAlignment = Alignment.CenterHorizontally
                   ) {
-                      Text(
-                          text = "🌙",
-                          style = MaterialTheme.typography.displayLarge
-                      )
-                      Spacer(modifier = Modifier.height(height = 12.dp))
-                      Text(
-                          text = "LunarVeil",
-                          style = MaterialTheme.typography.headlineLarge
-                      )
-                      Text(
-                          text = "v$version",
-                          color = MaterialTheme.colorScheme.onSurfaceVariant
-                      )
-                      Spacer(modifier = Modifier.height(height = 24.dp))
+                      Text(text = "🌙", style = MaterialTheme.typography.displayLarge)
+                      Spacer(modifier = Modifier.height(12.dp))
+                      Text(text = "LunarVeil", style = MaterialTheme.typography.headlineLarge)
+                      Text(text = "v$version", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                      Spacer(modifier = Modifier.height(24.dp))
                       Text(text = "Telegram bridge client")
                       Text(
                           text = "Powered by GitHub Actions",
@@ -568,16 +553,16 @@ jobs:
           import android.os.Bundle
           import androidx.activity.ComponentActivity
           import androidx.activity.compose.setContent
-          import androidx.compose.foundation.layout.padding
+          import androidx.compose.foundation.layout.*
           import androidx.compose.material.icons.Icons
           import androidx.compose.material.icons.filled.Menu
           import androidx.compose.material3.*
           import androidx.compose.runtime.*
           import androidx.compose.ui.Modifier
-          import androidx.compose.ui.unit.dp
           import androidx.navigation.NavDestination.Companion.hierarchy
           import androidx.navigation.NavGraph.Companion.findStartDestination
           import androidx.navigation.compose.*
+          import kotlinx.coroutines.launch
           import me.lunarveil.BuildConfig
           import me.lunarveil.data.model.Chat
           import me.lunarveil.navigation.Screen
@@ -595,65 +580,103 @@ jobs:
           @Composable
           fun MainApp() {
               val navController = rememberNavController()
+              val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+              val scope = rememberCoroutineScope()
               var chats by remember { mutableStateOf<List<Chat>>(emptyList()) }
               val screens = listOf(Screen.Telegram, Screen.Logs, Screen.About)
               val navBackStackEntry by navController.currentBackStackEntryAsState()
               val currentDestination = navBackStackEntry?.destination
 
-              Scaffold(
-                  topBar = {
-                      TopAppBar(
-                          title = { Text(text = "LunarVeil") },
-                          navigationIcon = {
-                              IconButton(onClick = {}) {
-                                  Icon(imageVector = Icons.Default.Menu, contentDescription = "Menu")
-                              }
-                          },
-                          colors = TopAppBarDefaults.topAppBarColors(
-                              containerColor = MaterialTheme.colorScheme.surface
+              ModalNavigationDrawer(
+                  drawerState = drawerState,
+                  drawerContent = {
+                      ModalDrawerSheet {
+                          Spacer(modifier = Modifier.height(16.dp))
+                          Text(
+                              text = "LunarVeil",
+                              modifier = Modifier.padding(16.dp),
+                              style = MaterialTheme.typography.headlineSmall
                           )
-                      )
-                  },
-                  bottomBar = {
-                      NavigationBar {
-                          screens.forEach { s ->
-                              val sel = currentDestination?.hierarchy?.any { it.route == s.route } == true
-                              NavigationBarItem(
-                                  icon = {
-                                      Icon(
-                                          imageVector = if (sel) s.selectedIcon else s.icon,
-                                          contentDescription = s.title
-                                      )
-                                  },
-                                  label = { Text(text = s.title) },
-                                  selected = sel,
-                                  onClick = {
-                                      navController.navigate(route = s.route) {
-                                          popUpTo(navController.graph.findStartDestination().id) {
-                                              saveState = true
-                                          }
-                                          launchSingleTop = true
-                                          restoreState = true
-                                      }
-                                  }
-                              )
-                          }
+                          HorizontalDivider()
+                          NavigationDrawerItem(
+                              icon = { Text(text = "▶") },
+                              label = { Text(text = "Run Workflow") },
+                              selected = false,
+                              onClick = {
+                                  Logger.d(tag = "Main", msg = "Run workflow clicked")
+                                  scope.launch { drawerState.close() }
+                              }
+                          )
+                          NavigationDrawerItem(
+                              icon = { Text(text = "⬇") },
+                              label = { Text(text = "Fetch Results") },
+                              selected = false,
+                              onClick = {
+                                  Logger.d(tag = "Main", msg = "Fetch clicked")
+                                  scope.launch { drawerState.close() }
+                              }
+                          )
+                          HorizontalDivider()
+                          NavigationDrawerItem(
+                              icon = { Text(text = "⚙") },
+                              label = { Text(text = "Settings") },
+                              selected = false,
+                              onClick = {
+                                  Logger.d(tag = "Main", msg = "Settings clicked")
+                                  scope.launch { drawerState.close() }
+                              }
+                          )
                       }
                   }
-              ) { inner ->
-                  NavHost(
-                      navController = navController,
-                      startDestination = Screen.Telegram.route,
-                      modifier = Modifier.padding(paddingValues = inner)
-                  ) {
-                      composable(route = Screen.Telegram.route) {
-                          TelegramScreen(chats = chats) { Logger.d(tag = "TG", msg = "Chat ${it.id}") }
+              ) {
+                  Scaffold(
+                      topBar = {
+                          TopAppBar(
+                              title = { Text(text = "LunarVeil") },
+                              navigationIcon = {
+                                  IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                                      Icon(imageVector = Icons.Default.Menu, contentDescription = "Menu")
+                                  }
+                              },
+                              colors = TopAppBarDefaults.topAppBarColors(
+                                  containerColor = MaterialTheme.colorScheme.surface
+                              )
+                          )
+                      },
+                      bottomBar = {
+                          NavigationBar {
+                              screens.forEach { s ->
+                                  val sel = currentDestination?.hierarchy?.any { it.route == s.route } == true
+                                  NavigationBarItem(
+                                      icon = { Icon(imageVector = if (sel) s.selectedIcon else s.icon, contentDescription = s.title) },
+                                      label = { Text(text = s.title) },
+                                      selected = sel,
+                                      onClick = {
+                                          navController.navigate(s.route) {
+                                              popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                                              launchSingleTop = true
+                                              restoreState = true
+                                          }
+                                      }
+                                  )
+                              }
+                          }
                       }
-                      composable(route = Screen.Logs.route) {
-                          LogsScreen()
-                      }
-                      composable(route = Screen.About.route) {
-                          AboutScreen(version = BuildConfig.VERSION_NAME)
+                  ) { inner ->
+                      NavHost(
+                          navController = navController,
+                          startDestination = Screen.Telegram.route,
+                          modifier = Modifier.padding(inner)
+                      ) {
+                          composable(Screen.Telegram.route) {
+                              TelegramScreen(chats = chats, onChatClick = { Logger.d(tag = "TG", msg = "Chat ${it.id}") })
+                          }
+                          composable(Screen.Logs.route) {
+                              LogsScreen()
+                          }
+                          composable(Screen.About.route) {
+                              AboutScreen(version = BuildConfig.VERSION_NAME)
+                          }
                       }
                   }
               }
