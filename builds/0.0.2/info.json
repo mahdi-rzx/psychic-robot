@@ -1,0 +1,13 @@
+{
+  "version": "0.0.2",
+  "apk_name": "app-debug.apk",
+  "total_size": 17208191,
+  "total_chunks": 4,
+  "chunk_size_mb": 5,
+  "download_urls": [
+    "https://raw.githubusercontent.com/mahdi-rzx/psychic-robot/main/builds/0.0.2/chunk.001.zip",
+    "https://raw.githubusercontent.com/mahdi-rzx/psychic-robot/main/builds/0.0.2/chunk.002.zip",
+    "https://raw.githubusercontent.com/mahdi-rzx/psychic-robot/main/builds/0.0.2/chunk.003.zip",
+    "https://raw.githubusercontent.com/mahdi-rzx/psychic-robot/main/builds/0.0.2/chunk.004.zip"
+  ]
+}
