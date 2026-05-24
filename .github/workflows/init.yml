@@ -185,9 +185,10 @@ jobs:
           EOF
 
           cat > app/src/main/java/me/lunarveil/ui/screens/Logger.kt << 'EOF'
-          package io.github.youruser;package me.lunarveil.ui.screens
+          package me.lunarveil.ui.screens
 
           import android.content.Context
+          import android.content.pm.PackageManager
           import androidx.compose.runtime.mutableStateListOf
           import java.io.File
           import java.io.FileWriter
@@ -205,7 +206,8 @@ jobs:
                   try {
                       val logFile = File(ctx.filesDir, "lunarveil.log")
                       fileWriter = FileWriter(logFile, true)
-                      val msg = "=== LunarVeil v${ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName} ==="
+                      val version = try { ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName } catch (e: PackageManager.NameNotFoundException) { "?" }
+                      val msg = "=== LunarVeil v$version ==="
                       logs.add(msg)
                       fileWriter?.write("${sdf.format(Date())} $msg\n")
                       fileWriter?.flush()
@@ -214,9 +216,9 @@ jobs:
                   }
               }
 
-              fun i(tag: String, msg: String) = log("INFO", tag, msg, null)
-              fun e(tag: String, msg: String, throwable: Throwable? = null) = log("ERROR", tag, msg, throwable)
-              fun d(tag: String, msg: String) = log("DEBUG", tag, msg, null)
+              fun i(tag: String, msg: String) { log("INFO", tag, msg, null) }
+              fun e(tag: String, msg: String, throwable: Throwable? = null) { log("ERROR", tag, msg, throwable) }
+              fun d(tag: String, msg: String) { log("DEBUG", tag, msg, null) }
 
               private fun log(level: String, tag: String, msg: String, throwable: Throwable?) {
                   val line = "[$level][$tag] $msg"
@@ -288,20 +290,17 @@ jobs:
                   super.onCreate(savedInstanceState)
                   Logger.init(this)
                   Logger.i("MAIN", "onCreate started")
-
                   try {
                       val prefs = AppPreferences(this)
                       Logger.i("MAIN", "AppPreferences OK")
                       val setupDone = runBlocking { prefs.setup.first() }
                       val savedOtp = runBlocking { prefs.otp.first() }
                       Logger.i("MAIN", "Setup=$setupDone OTP=${savedOtp.isNotEmpty()}")
-
                       setContent {
                           LunarVeilTheme {
                               var showSetup by remember { mutableStateOf(!setupDone) }
                               var showLock by remember { mutableStateOf(setupDone) }
                               var otp by remember { mutableStateOf(savedOtp) }
-
                               if (showSetup) {
                                   Logger.i("UI", "SetupScreen")
                                   SetupScreen { t, o, r, p ->
@@ -403,7 +402,7 @@ jobs:
               LaunchedEffect(Logger.logs.size) { if (Logger.logs.isNotEmpty()) scope.launch { list.animateScrollToItem(Logger.logs.size - 1) } }
               Column(Modifier.fillMaxSize()) {
                   Row(Modifier.fillMaxWidth().padding(8.dp), horizontalArrangement = Arrangement.End) { TextButton({ Logger.logs.clear() }) { Text("Clear") } }
-                  Text("Log path: ${Logger.getLogPath()}", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                  Text("Log: ${Logger.getLogPath()}", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
                   LazyColumn(state = list, Modifier.fillMaxSize()) { items(Logger.logs.toList()) { Text(it, style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 12.dp, vertical = 2.dp)) } }
               }
           }
@@ -437,6 +436,8 @@ jobs:
               var error by remember { mutableStateOf<String?>(null) }
               val snack = remember { SnackbarHostState() }
               val repository = remember { TelegramRepository(RetrofitClient.api, token, owner, repo) }
+              val tabs = listOf(TabInfo("Chats", Icons.Outlined.Chat, Icons.Filled.Chat), TabInfo("Logs", Icons.Outlined.List, Icons.Filled.List), TabInfo("About", Icons.Outlined.Info, Icons.Filled.Info))
+              val bs by nav.currentBackStackEntryAsState(); val dest = bs?.destination; val detail = dest?.route == "detail" || dest?.route == "settings"
 
               LaunchedEffect(Unit) {
                   Logger.i("MainApp", "Fetching chats...")
@@ -444,9 +445,6 @@ jobs:
                   withContext(Dispatchers.IO) { repository.getChats().fold(onSuccess = { chats = it }, onFailure = { error = it.message; Logger.e("MainApp", "Chats failed", it) }) }
                   loading = false
               }
-
-              val tabs = listOf(TabInfo("Chats", Icons.Outlined.Chat, Icons.Filled.Chat), TabInfo("Logs", Icons.Outlined.List, Icons.Filled.List), TabInfo("About", Icons.Outlined.Info, Icons.Filled.Info))
-              val bs by nav.currentBackStackEntryAsState(); val dest = bs?.destination; val detail = dest?.route == "detail" || dest?.route == "settings"
 
               ModalNavigationDrawer(drawerState = drawer, gesturesEnabled = !detail, drawerContent = {
                   ModalDrawerSheet {
