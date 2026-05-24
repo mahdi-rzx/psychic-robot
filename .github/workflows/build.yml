@@ -54,14 +54,20 @@ jobs:
       - name: Build debug APK
         run: ./gradlew assembleDebug
 
-      - name: Split APK into raw binary chunks (chunk.001, chunk.002, …)
+      - name: Split APK into base64 chunks (chunk.b64.001, chunk.b64.002, …)
         run: |
           APK_PATH=$(find app/build/outputs/apk/debug -name '*.apk' | head -n 1)
           mkdir -p release_chunks
           CHUNK_SIZE=$(( CHUNK_SIZE_MB * 1024 * 1024 ))
-          split -b $CHUNK_SIZE -d --numeric-suffixes=1 -a 3 "$APK_PATH" release_chunks/chunk.
+          split -b $CHUNK_SIZE -d --numeric-suffixes=1 -a 3 "$APK_PATH" temp_chunk_
+          a=1
+          for chunk in temp_chunk_*; do
+            base64 -w 0 "$chunk" > "release_chunks/chunk.b64.$(printf '%03d' $a)"
+            a=$((a+1))
+          done
+          rm temp_chunk_*
           TOTAL_SIZE=$(stat -c%s "$APK_PATH")
-          NUM_CHUNKS=$(ls release_chunks/chunk.* | wc -l)
+          NUM_CHUNKS=$((a-1))
           echo "{\"version\":\"$VERSION\",\"size\":$TOTAL_SIZE,\"chunks\":$NUM_CHUNKS,\"chunk_size_mb\":$CHUNK_SIZE_MB}" > release_chunks/meta.json
 
       - name: Store chunks in builds/<version>
