@@ -59,22 +59,24 @@ jobs:
         run: |
           APK_PATH=$(find app/build/outputs/apk/debug -name '*.apk' | head -n 1)
           BUILD_DIR="builds/$VERSION"
+          CHUNK_DIR="chunks_tmp"
           mkdir -p "$BUILD_DIR"
-          
+          mkdir -p "$CHUNK_DIR"
+
           # Split APK into raw chunks
           CHUNK_SIZE=$(( CHUNK_SIZE_MB * 1024 * 1024 ))
-          split -b $CHUNK_SIZE -d --numeric-suffixes=1 -a 3 "$APK_PATH" chunks/chunk.
-          
+          split -b $CHUNK_SIZE -d --numeric-suffixes=1 -a 3 "$APK_PATH" "$CHUNK_DIR/chunk."
+
           # Package each chunk as its own ZIP
-          cd chunks
+          cd "$CHUNK_DIR"
           for f in chunk.*; do
             zip "../$BUILD_DIR/${f}.zip" "$f"
           done
           cd ..
-          
+
           # Create metadata
           TOTAL_SIZE=$(stat -c%s "$APK_PATH")
-          NUM_CHUNKS=$(ls "$BUILD_DIR"/*.zip | wc -l)
+          NUM_CHUNKS=$(ls "$BUILD_DIR"/*.zip 2>/dev/null | wc -l)
           cat > "$BUILD_DIR/info.json" << INFO
           {
             "version": "$VERSION",
@@ -84,18 +86,18 @@ jobs:
             "chunk_size_mb": $CHUNK_SIZE_MB,
             "download_urls": [
           INFO
-          
+
           for i in $(seq 1 $NUM_CHUNKS); do
             PADDED=$(printf "%03d" $i)
-            echo "    \"https://raw.githubusercontent.com/\${{ github.repository }}/main/$BUILD_DIR/chunk.${PADDED}.zip\"," >> "$BUILD_DIR/info.json"
+            echo "    \"https://raw.githubusercontent.com/${{ github.repository }}/main/$BUILD_DIR/chunk.${PADDED}.zip\"," >> "$BUILD_DIR/info.json"
           done
-          
+
           # Remove trailing comma from last URL
           sed -i '$ s/,$//' "$BUILD_DIR/info.json"
           echo '  ]' >> "$BUILD_DIR/info.json"
           echo '}' >> "$BUILD_DIR/info.json"
-          
-          rm -rf chunks
+
+          rm -rf "$CHUNK_DIR"
 
       - name: Commit ZIP chunks
         run: |
