@@ -1,0 +1,59 @@
+name: 2-Build APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_name:
+        description: 'Version name (e.g. 1.0.0)'
+        required: true
+      chunk_size_mb:
+        description: 'Chunk size (MB)'
+        default: '90'
+        required: false
+
+env:
+  VERSION: ${{ github.event.inputs.version_name }}
+  CHUNK_SIZE_MB: ${{ github.event.inputs.chunk_size_mb || '90' }}
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set version
+        run: sed -i 's/versionName = ".*"/versionName = "'$VERSION'"/' app/build.gradle.kts
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Generate Gradle wrapper
+        run: gradle wrapper --gradle-version 8.5
+
+      - name: Build debug APK
+        run: ./gradlew assembleDebug
+
+      - name: Split APK
+        run: |
+          APK_PATH=$(find app/build/outputs/apk/debug -name '*.apk' | head -n 1)
+          BUILD_DIR="builds/$VERSION"; mkdir -p "$BUILD_DIR"
+          cp "$APK_PATH" "$BUILD_DIR/LunarVeil_v$VERSION.apk"
+          cd "$BUILD_DIR"
+          ZIP_NAME="LunarVeil_v$VERSION.zip"; zip "$ZIP_NAME" "LunarVeil_v$VERSION.apk"; rm "LunarVeil_v$VERSION.apk"
+          CHUNK_SIZE=$(( CHUNK_SIZE_MB * 1024 * 1024 ))
+          split -b $CHUNK_SIZE -d --numeric-suffixes=1 -a 3 "$ZIP_NAME" "$ZIP_NAME."; rm "$ZIP_NAME"
+          TOTAL_SIZE=0; for f in "$ZIP_NAME."*; do TOTAL_SIZE=$((TOTAL_SIZE + $(stat -c%s "$f"))); done
+          NUM_CHUNKS=$(ls "$ZIP_NAME."* 2>/dev/null | wc -l)
+          cat > info.json << INFO
+          {"version":"$VERSION","zip_name":"$ZIP_NAME","total_size":$TOTAL_SIZE,"total_chunks":$NUM_CHUNKS,"chunk_size_mb":$CHUNK_SIZE_MB,"download_urls":[
+          INFO
+          for i in $(seq 1 $NUM_CHUNKS); do PADDED=$(printf "%03d" $i); echo "    \"https://raw.githubusercontent.com/${{ github.repository }}/main/builds/$VERSION/${ZIP_NAME}.${PADDED}\"," >> info.json; done
+          sed -i '$ s/,$//' info.json; echo '  ]}' >> info.json
+
+      - name: Commit APK
+        run: |
+          git config user.name "github-actions"; git config user.email "actions@github.com"
+          git add builds/; git commit -m "🌙 v$VERSION" || echo "No changes"; git push
