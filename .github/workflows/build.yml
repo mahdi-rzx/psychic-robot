@@ -53,7 +53,6 @@ jobs:
           mkdir -p app/src/main/res/mipmap-anydpi-v26
           mkdir -p gradle/wrapper
 
-          # Gradle files
           cat > gradle.properties << 'EOF'
           android.useAndroidX=true
           kotlin.code.style=official
@@ -96,7 +95,6 @@ jobs:
           EOF
           touch app/proguard-rules.pro
 
-          # Resources
           cat > app/src/main/AndroidManifest.xml << 'EOF'
           <?xml version="1.0" encoding="utf-8"?>
           <manifest xmlns:android="http://schemas.android.com/apk/res/android">
@@ -122,7 +120,6 @@ jobs:
           <resources><color name="ic_launcher_background">#6750A4</color><color name="ic_launcher_foreground">#FFFFFF</color></resources>
           EOF
 
-          # Theme
           cat > app/src/main/java/me/lunarveil/ui/theme/Theme.kt << 'EOF'
           package me.lunarveil.ui.theme
           import android.os.Build; import androidx.compose.foundation.isSystemInDarkTheme; import androidx.compose.material3.*; import androidx.compose.runtime.Composable; import androidx.compose.ui.graphics.Color; import androidx.compose.ui.platform.LocalContext
@@ -132,14 +129,12 @@ jobs:
           }
           EOF
 
-          # Models
           cat > app/src/main/java/me/lunarveil/data/model/Models.kt << 'EOF'
           package me.lunarveil.data.model
           data class Chat(val id: Long, val name: String, val type: String, val unread: Int = 0, val lastMsg: String = "", val lastDate: String? = null, val archived: Boolean = false, val username: String? = null, val phone: String? = null, val lastMedia: String? = null)
           data class Message(val id: Long, val date: String? = null, val text: String = "", val out: Boolean = false, val sender: String = "", val media: String? = null)
           EOF
 
-          # API
           cat > app/src/main/java/me/lunarveil/data/remote/GitHubApi.kt << 'EOF'
           package me.lunarveil.data.remote
           import retrofit2.Response; import retrofit2.http.*
@@ -156,7 +151,6 @@ jobs:
           data class GitHubContent(val content: String?, val encoding: String?)
           EOF
 
-          # Retrofit
           cat > app/src/main/java/me/lunarveil/data/remote/RetrofitClient.kt << 'EOF'
           package me.lunarveil.data.remote
           import okhttp3.OkHttpClient; import retrofit2.Retrofit; import retrofit2.converter.gson.GsonConverterFactory; import java.util.concurrent.TimeUnit
@@ -167,7 +161,6 @@ jobs:
           }
           EOF
 
-          # Repository
           cat > app/src/main/java/me/lunarveil/data/repository/TelegramRepository.kt << 'EOF'
           package me.lunarveil.data.repository
           import android.util.Base64; import com.google.gson.Gson; import com.google.gson.reflect.TypeToken; import me.lunarveil.data.model.*; import me.lunarveil.data.remote.*
@@ -180,7 +173,6 @@ jobs:
           }
           EOF
 
-          # DataStore
           cat > app/src/main/java/me/lunarveil/data/local/AppPreferences.kt << 'EOF'
           package me.lunarveil.data.local
           import android.content.Context; import androidx.datastore.core.DataStore; import androidx.datastore.preferences.core.*; import androidx.datastore.preferences.preferencesDataStore; import kotlinx.coroutines.flow.Flow; import kotlinx.coroutines.flow.map
@@ -192,19 +184,16 @@ jobs:
           }
           EOF
 
-          # Logger
           cat > app/src/main/java/me/lunarveil/ui/screens/Logger.kt << 'EOF'
           package me.lunarveil.ui.screens
           import androidx.compose.runtime.mutableStateListOf
           object Logger { val logs = mutableStateListOf<String>(); fun i(t: String, m: String) { logs.add("[INFO][$t] $m") }; fun e(t: String, m: String) { logs.add("[ERROR][$t] $m") } }
           EOF
 
-          # MAIN ACTIVITY - Crash-safe
           cat > app/src/main/java/me/lunarveil/MainActivity.kt << 'EOF'
           package me.lunarveil
 
           import android.os.Bundle
-          import android.util.Log
           import androidx.activity.ComponentActivity
           import androidx.activity.compose.setContent
           import androidx.compose.foundation.clickable
@@ -220,7 +209,7 @@ jobs:
           import androidx.compose.runtime.*
           import androidx.compose.ui.Alignment
           import androidx.compose.ui.Modifier
-          import androidx.compose.ui.platform.LocalContext
+          import androidx.compose.ui.graphics.vector.ImageVector
           import androidx.compose.ui.text.font.FontWeight
           import androidx.compose.ui.text.input.KeyboardType
           import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -247,58 +236,17 @@ jobs:
           class MainActivity : ComponentActivity() {
               override fun onCreate(savedInstanceState: Bundle?) {
                   super.onCreate(savedInstanceState)
-                  try {
-                      val prefs = AppPreferences(this)
-                      val setupDone = runBlocking { prefs.setup.first() }
-                      val savedOtp = runBlocking { prefs.otp.first() }
-
-                      setContent {
-                          LunarVeilTheme {
-                              var showSetup by remember { mutableStateOf(!setupDone) }
-                              var showLock by remember { mutableStateOf(setupDone) }
-                              var otp by remember { mutableStateOf(savedOtp) }
-
-                              if (showSetup) {
-                                  SetupScreen { token, owner, repo, newOtp ->
-                                      try {
-                                          runBlocking { prefs.save(token, owner, repo, newOtp); otp = newOtp }
-                                          showSetup = false; showLock = false
-                                      } catch (e: Exception) {
-                                          Log.e("LunarVeil", "Setup save failed", e)
-                                      }
-                                  }
-                              } else if (showLock) {
-                                  LockScreen(expectedOtp = otp) { showLock = false }
-                              } else {
-                                  try {
-                                      val token = runBlocking { prefs.token.first() }
-                                      val owner = runBlocking { prefs.owner.first() }
-                                      val repo = runBlocking { prefs.repo.first() }
-                                      MainApp(token, owner, repo)
-                                  } catch (e: Exception) {
-                                      Log.e("LunarVeil", "MainApp init failed", e)
-                                      ErrorScreen(e.message ?: "Unknown error")
-                                  }
-                              }
-                          }
-                      }
-                  } catch (e: Exception) {
-                      Log.e("LunarVeil", "onCreate failed", e)
-                      setContent {
-                          LunarVeilTheme { ErrorScreen(e.message ?: "App crashed") }
-                      }
-                  }
-              }
-          }
-
-          @Composable
-          fun ErrorScreen(msg: String) {
-              Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-                  Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                      Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                          Text("❌ Error", style = MaterialTheme.typography.headlineMedium)
-                          Spacer(Modifier.height(8.dp))
-                          Text(msg, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error)
+                  val prefs = AppPreferences(this)
+                  val setupDone = runBlocking { prefs.setup.first() }
+                  val savedOtp = runBlocking { prefs.otp.first() }
+                  setContent {
+                      LunarVeilTheme {
+                          var showSetup by remember { mutableStateOf(!setupDone) }
+                          var showLock by remember { mutableStateOf(setupDone) }
+                          var otp by remember { mutableStateOf(savedOtp) }
+                          if (showSetup) SetupScreen { t, o, r, p -> runBlocking { prefs.save(t, o, r, p); otp = p }; showSetup = false; showLock = false }
+                          else if (showLock) LockScreen(otp) { showLock = false }
+                          else { val token = runBlocking { prefs.token.first() }; val owner = runBlocking { prefs.owner.first() }; val repo = runBlocking { prefs.repo.first() }; MainApp(token, owner, repo) }
                       }
                   }
               }
@@ -314,7 +262,7 @@ jobs:
                       Spacer(Modifier.height(8.dp)); OutlinedTextField(owner, { owner = it }, label = { Text("Repo Owner") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                       Spacer(Modifier.height(8.dp)); OutlinedTextField(repo, { repo = it }, label = { Text("Repo Name") }, singleLine = true, modifier = Modifier.fillMaxWidth())
                       Spacer(Modifier.height(8.dp)); OutlinedTextField(otp, { otp = it }, label = { Text("App Password") }, visualTransformation = PasswordVisualTransformation(), singleLine = true, modifier = Modifier.fillMaxWidth())
-                      Spacer(Modifier.height(24.dp)); Button({ onComplete(token, owner, repo, otp) }, enabled = token.isNotBlank() && owner.isNotBlank() && repo.isNotBlank() && otp.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text("Save & Continue") }
+                      Spacer(Modifier.height(24.dp)); Button({ onComplete(token, owner, repo, otp) }, enabled = token.isNotBlank() && owner.isNotBlank() && repo.isNotBlank() && otp.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text("Save") }
                   }
               }
           }
@@ -332,6 +280,8 @@ jobs:
               }
           }
 
+          data class TabInfo(val title: String, val icon: ImageVector, val selectedIcon: ImageVector)
+
           @OptIn(ExperimentalMaterial3Api::class)
           @Composable
           fun MainApp(token: String, owner: String, repo: String) {
@@ -342,53 +292,42 @@ jobs:
               val snack = remember { SnackbarHostState() }
               val repository = remember { TelegramRepository(RetrofitClient.api, token, owner, repo) }
 
-              LaunchedEffect(Unit) {
-                  loading = true; error = null
-                  withContext(Dispatchers.IO) {
-                      repository.getChats().fold(
-                          onSuccess = { chats = it; Logger.i("Main", "Loaded ${it.size} chats") },
-                          onFailure = { error = it.message; Logger.e("Main", "Failed: ${it.message}") }
-                      )
-                  }
+              LaunchedEffect(Unit) { loading = true; error = null
+                  withContext(Dispatchers.IO) { repository.getChats().fold(onSuccess = { chats = it }, onFailure = { error = it.message }) }
                   loading = false
               }
 
-              val screens = listOf("Chats" to Icons.Outlined.Chat to Icons.Filled.Chat, "Logs" to Icons.Outlined.List to Icons.Filled.List, "About" to Icons.Outlined.Info to Icons.Filled.Info)
+              val tabs = listOf(TabInfo("Chats", Icons.Outlined.Chat, Icons.Filled.Chat), TabInfo("Logs", Icons.Outlined.List, Icons.Filled.List), TabInfo("About", Icons.Outlined.Info, Icons.Filled.Info))
               val bs by nav.currentBackStackEntryAsState(); val dest = bs?.destination; val detail = dest?.route == "detail" || dest?.route == "settings"
 
-              Scaffold(
-                  snackbarHost = { SnackbarHost(snack) },
-                  topBar = { if (!detail) TopAppBar(title = { Text("LunarVeil") }, navigationIcon = { IconButton({ scope.launch { drawer.open() } }) { Icon(Icons.Default.Menu, "Menu") } }, colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)) },
-                  bottomBar = { if (!detail) NavigationBar { screens.forEachIndexed { i, s -> val sel = dest?.hierarchy?.any { it.route == "s$i" } == true; NavigationBarItem(icon = { Icon(if (sel) s.second else s.first, "tab") }, label = { Text(s.first.first) }, selected = sel, onClick = { nav.navigate("s$i") { popUpTo(nav.graph.findStartDestination().id) { saveState = true }; launchSingleTop = true; restoreState = true } }) } } }
-              ) { inner ->
-                  NavHost(nav, "s0", Modifier.padding(inner)) {
-                      composable("s0") {
-                          when {
-                              loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-                              error != null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Column(horizontalAlignment = Alignment.CenterHorizontally) { Text("⚠️ ${error}", color = MaterialTheme.colorScheme.error); Spacer(Modifier.height(8.dp)); Text("Check token or run workflow first", style = MaterialTheme.typography.bodySmall); Spacer(Modifier.height(16.dp)); Button({ loading = true; scope.launch { withContext(Dispatchers.IO) { repository.getChats().fold(onSuccess = { chats = it; error = null }, onFailure = { error = it.message }) }; loading = false } }) { Text("Retry") } } }
-                              chats.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Column(horizontalAlignment = Alignment.CenterHorizontally) { Text("No chats"); Spacer(Modifier.height(8.dp)); Text("Run workflow then fetch", style = MaterialTheme.typography.bodySmall); Spacer(Modifier.height(16.dp)); Button({ scope.launch { drawer.open() } }) { Text("Open Menu") } } }
-                              else -> {
-                                  val main = chats.filter { !it.archived }; val arch = chats.filter { it.archived }
-                                  LazyColumn(Modifier.fillMaxSize()) {
-                                      items(main) { c -> ChatRow(c) { cId = c.id; cName = c.name; scope.launch { withContext(Dispatchers.IO) { repository.getMessages(c.id).fold(onSuccess = { msgs = it }, onFailure = { snack.showSnackbar("Failed: ${it.message}") }) }; nav.navigate("detail") } } }
-                                      if (arch.isNotEmpty()) { item { Text("📦 Archived", Modifier.padding(12.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }; items(arch) { c -> ChatRow(c) { cId = c.id; cName = c.name; scope.launch { withContext(Dispatchers.IO) { repository.getMessages(c.id).fold(onSuccess = { msgs = it }, onFailure = { snack.showSnackbar("Failed: ${it.message}") }) }; nav.navigate("detail") } } } }
-                                  }
+              ModalNavigationDrawer(drawerState = drawer, gesturesEnabled = !detail, drawerContent = {
+                  ModalDrawerSheet {
+                      Spacer(Modifier.height(16.dp)); Text("LunarVeil", Modifier.padding(16.dp), style = MaterialTheme.typography.headlineSmall); HorizontalDivider()
+                      NavigationDrawerItem(icon = { Text("▶") }, label = { Text("Run Workflow") }, selected = false, onClick = { scope.launch { drawer.close(); withContext(Dispatchers.IO) { repository.trigger(Gson().toJson(listOf(mapOf("type" to "get_chats")))) }; snack.showSnackbar("Triggered!") } })
+                      NavigationDrawerItem(icon = { Text("⬇") }, label = { Text("Fetch Results") }, selected = false, onClick = { scope.launch { drawer.close(); loading = true; error = null; withContext(Dispatchers.IO) { repository.getChats().fold(onSuccess = { chats = it }, onFailure = { error = it.message }) }; loading = false } })
+                      HorizontalDivider()
+                      NavigationDrawerItem(icon = { Text("⚙") }, label = { Text("Settings") }, selected = false, onClick = { scope.launch { drawer.close(); nav.navigate("settings") } })
+                  }
+              }) {
+                  Scaffold(snackbarHost = { SnackbarHost(snack) },
+                      topBar = { if (!detail) TopAppBar(title = { Text("LunarVeil") }, navigationIcon = { IconButton({ scope.launch { drawer.open() } }) { Icon(Icons.Default.Menu, "Menu") } }, colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface)) },
+                      bottomBar = { if (!detail) NavigationBar { tabs.forEachIndexed { i, t -> val sel = dest?.hierarchy?.any { it.route == "s$i" } == true; NavigationBarItem(icon = { Icon(if (sel) t.selectedIcon else t.icon, t.title) }, label = { Text(t.title) }, selected = sel, onClick = { nav.navigate("s$i") { popUpTo(nav.graph.findStartDestination().id) { saveState = true }; launchSingleTop = true; restoreState = true } }) } } }
+                  ) { inner ->
+                      NavHost(nav, "s0", Modifier.padding(inner)) {
+                          composable("s0") {
+                              when { loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                                  error != null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Column(horizontalAlignment = Alignment.CenterHorizontally) { Text("⚠️ $error", color = MaterialTheme.colorScheme.error); Spacer(Modifier.height(16.dp)); Button({ loading = true; scope.launch { withContext(Dispatchers.IO) { repository.getChats().fold(onSuccess = { chats = it; error = null }, onFailure = { error = it.message }) }; loading = false } }) { Text("Retry") } } }
+                                  chats.isEmpty() -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { Column(horizontalAlignment = Alignment.CenterHorizontally) { Text("No chats"); Spacer(Modifier.height(8.dp)); Button({ scope.launch { drawer.open() } }) { Text("Open Menu") } } }
+                                  else -> { val main = chats.filter { !it.archived }; val arch = chats.filter { it.archived }; LazyColumn(Modifier.fillMaxSize()) { items(main) { c -> ChatRow(c) { cId = c.id; cName = c.name; scope.launch { withContext(Dispatchers.IO) { repository.getMessages(c.id).fold(onSuccess = { msgs = it }, onFailure = {}) }; nav.navigate("detail") } } }; if (arch.isNotEmpty()) { item { Text("📦 Archived", Modifier.padding(12.dp), color = MaterialTheme.colorScheme.onSurfaceVariant) }; items(arch) { c -> ChatRow(c) { cId = c.id; cName = c.name; scope.launch { withContext(Dispatchers.IO) { repository.getMessages(c.id).fold(onSuccess = { msgs = it }, onFailure = {}) }; nav.navigate("detail") } } } } }
                               }
                           }
+                          composable("detail") { ChatScreen(cName, msgs, { nav.popBackStack() }, { txt -> scope.launch { repository.trigger(Gson().toJson(listOf(mapOf("type" to "send_message", "chat_id" to cId, "text" to txt), mapOf("type" to "get_messages", "chat_id" to cId, "limit" to 50)))); snack.showSnackbar("Queued!") } }) }
+                          composable("settings") { SettingsScreen(token, owner, repo) { nav.popBackStack() } }
+                          composable("s1") { LogsScreen() }
+                          composable("s2") { AboutScreen(BuildConfig.VERSION_NAME) }
                       }
-                      composable("detail") { ChatScreen(cName, msgs, { nav.popBackStack() }, { txt -> scope.launch { repository.trigger(Gson().toJson(listOf(mapOf("type" to "send_message", "chat_id" to cId, "text" to txt), mapOf("type" to "get_messages", "chat_id" to cId, "limit" to 50)))); snack.showSnackbar("Queued!") } }) }
-                      composable("settings") { SettingsScreen(token, owner, repo) { nav.popBackStack() } }
-                      composable("s1") { LogsScreen() }
-                      composable("s2") { AboutScreen(BuildConfig.VERSION_NAME) }
                   }
               }
-
-              ModalNavigationDrawer(drawerState = drawer, drawerContent = { ModalDrawerSheet { Spacer(Modifier.height(16.dp)); Text("LunarVeil", Modifier.padding(16.dp), style = MaterialTheme.typography.headlineSmall); HorizontalDivider()
-                  NavigationDrawerItem(icon = { Text("▶") }, label = { Text("Run Workflow") }, selected = false, onClick = { scope.launch { drawer.close(); withContext(Dispatchers.IO) { repository.trigger(Gson().toJson(listOf(mapOf("type" to "get_chats")))) }; snack.showSnackbar("Triggered! Wait then Fetch.") } })
-                  NavigationDrawerItem(icon = { Text("⬇") }, label = { Text("Fetch Results") }, selected = false, onClick = { scope.launch { drawer.close(); loading = true; error = null; withContext(Dispatchers.IO) { repository.getChats().fold(onSuccess = { chats = it }, onFailure = { error = it.message }) }; loading = false; if (error == null) snack.showSnackbar("Loaded ${chats.size} chats") } })
-                  HorizontalDivider()
-                  NavigationDrawerItem(icon = { Text("⚙") }, label = { Text("Settings") }, selected = false, onClick = { scope.launch { drawer.close(); nav.navigate("settings") } })
-              } })
           }
 
           @Composable
