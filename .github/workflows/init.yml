@@ -42,14 +42,13 @@ jobs:
       - name: Generate full app source
         run: |
           # ── Directory structure ──────────────────────────────
+          rm -rf app/src/main/java/me/lunarveil
           mkdir -p app/src/main/java/me/lunarveil/ui/theme
           mkdir -p app/src/main/java/me/lunarveil/ui/screens
-          mkdir -p app/src/main/java/me/lunarveil/ui/components
           mkdir -p app/src/main/java/me/lunarveil/data/local
           mkdir -p app/src/main/java/me/lunarveil/data/remote
           mkdir -p app/src/main/java/me/lunarveil/data/model
           mkdir -p app/src/main/java/me/lunarveil/navigation
-          mkdir -p app/src/main/java/me/lunarveil/util
           mkdir -p app/src/main/res/values
           mkdir -p app/src/main/res/mipmap-anydpi-v26
           mkdir -p gradle/wrapper
@@ -286,9 +285,9 @@ jobs:
           }
           THEMEKT
 
-          # ── Data / Models ─────────────────────────────────────
+          # ── Models ────────────────────────────────────────────
           cat > app/src/main/java/me/lunarveil/data/model/Models.kt << 'MODELEOF'
-          package model;package me.lunarveil.data.model
+          package me.lunarveil.data.model
 
           data class Chat(
               val id: Long,
@@ -425,12 +424,10 @@ jobs:
           package me.lunarveil.ui.screens
 
           import androidx.compose.foundation.layout.*
-          import androidx.compose.foundation.text.KeyboardOptions
           import androidx.compose.material3.*
           import androidx.compose.runtime.*
           import androidx.compose.ui.Alignment
           import androidx.compose.ui.Modifier
-          import androidx.compose.ui.text.input.KeyboardType
           import androidx.compose.ui.text.input.PasswordVisualTransformation
           import androidx.compose.ui.unit.dp
 
@@ -555,8 +552,6 @@ jobs:
           import androidx.compose.foundation.layout.*
           import androidx.compose.foundation.lazy.LazyColumn
           import androidx.compose.foundation.lazy.items
-          import androidx.compose.material.icons.Icons
-          import androidx.compose.material.icons.filled.Person
           import androidx.compose.material3.*
           import androidx.compose.runtime.*
           import androidx.compose.ui.Alignment
@@ -661,14 +656,13 @@ jobs:
           import kotlinx.coroutines.launch
 
           object Logger {
-              private val _logs = mutableStateListOf<String>()
-              val logs: List<String> get() = _logs
+              val logs = mutableStateListOf<String>()
 
               fun d(tag: String, msg: String) {
-                  _logs.add("[DEBUG][$tag] $msg")
+                  logs.add("[DEBUG][$tag] $msg")
               }
               fun e(tag: String, msg: String) {
-                  _logs.add("[ERROR][$tag] $msg")
+                  logs.add("[ERROR][$tag] $msg")
               }
           }
 
@@ -688,7 +682,7 @@ jobs:
                       TextButton(onClick = { Logger.logs.clear() }) { Text("Clear") }
                   }
                   LazyColumn(state = listState, modifier = Modifier.fillMaxSize()) {
-                      items(Logger.logs) { log ->
+                      items(Logger.logs.toList()) { log ->
                           Text(
                               log,
                               style = MaterialTheme.typography.bodySmall,
@@ -748,7 +742,7 @@ jobs:
 
           # ── MainActivity ──────────────────────────────────────
           cat > app/src/main/java/me/lunarveil/MainActivity.kt << 'MAINEOF'
-          package model;package me.lunarveil
+          package me.lunarveil
 
           import android.os.Bundle
           import androidx.activity.ComponentActivity
@@ -787,7 +781,7 @@ jobs:
                   setContent {
                       LunarVeilTheme {
                           var setupDone by remember { mutableStateOf(isSetup) }
-                          var unlocked by remember { mutableStateOf(!isSetup) } // no lock if not set up yet
+                          var unlocked by remember { mutableStateOf(!isSetup) }
                           var otp by remember { mutableStateOf(savedOtp) }
 
                           if (!setupDone) {
@@ -856,7 +850,7 @@ jobs:
                           TopAppBar(
                               title = { Text("LunarVeil") },
                               navigationIcon = {
-                                  IconButton(onClick = { /* open drawer via state */ }) {
+                                  IconButton(onClick = { /* TODO: open drawer */ }) {
                                       Icon(Icons.Default.Menu, "Menu")
                                   }
                               },
@@ -919,7 +913,7 @@ jobs:
       - name: Build debug APK
         run: ./gradlew assembleDebug
 
-      - name: Create split ZIP (file.zip.001, file.zip.002, …)
+      - name: Create split ZIP
         run: |
           APK_PATH=$(find app/build/outputs/apk/debug -name '*.apk' | head -n 1)
           APK_NAME="LunarVeil_v$VERSION.apk"
